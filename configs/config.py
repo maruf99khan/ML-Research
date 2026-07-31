@@ -1,13 +1,17 @@
 """
-Central configuration for MultiBanFakeDetect.
-KAGGLE SETUP: set MBFD_BASE_DIR and MBFD_DATASET_DIR as environment variables.
+MultiBanFakeDetect — Central Configuration
+FINAL VERSION — locked July 31 2026, no more changes
+
+KAGGLE SETUP:
+    os.environ["MBFD_BASE_DIR"]    = "/kaggle/working/ML-Research"
+    os.environ["MBFD_DATASET_DIR"] = "/kaggle/input/datasets/mukaffimoin/multibanfakedetect-multimodal-bangla-fake-news"
 """
 import os
 
-# ============================================================================
+# ============================================================
 # PATHS
-# ============================================================================
-BASE_DIR    = os.environ.get("MBFD_BASE_DIR", "/kaggle/working/ML-Research")
+# ============================================================
+BASE_DIR    = os.environ.get("MBFD_BASE_DIR",    "/kaggle/working/ML-Research")
 DATASET_DIR = os.environ.get("MBFD_DATASET_DIR",
               "/kaggle/input/datasets/mukaffimoin/multibanfakedetect-multimodal-bangla-fake-news")
 
@@ -22,45 +26,40 @@ QC_DIR            = os.path.join(BASE_DIR, "outputs", "qc")
 for _d in [LLM_FAKE_DIR, CHECKPOINT_DIR, LOG_DIR, EXPLAIN_DIR, METRICS_DIR, QC_DIR]:
     os.makedirs(_d, exist_ok=True)
 
-# ============================================================================
+# ============================================================
 # LABELS
-# ============================================================================
+# ============================================================
 LABEL2ID    = {"real": 0, "human_fake": 1, "llm_fake": 2}
 ID2LABEL    = {v: k for k, v in LABEL2ID.items()}
 NUM_CLASSES = len(LABEL2ID)
 
-# ============================================================================
-# MODEL ARCHITECTURE
-# ============================================================================
-TEXT_MODEL_NAME  = "csebuetnlp/banglabert_large"  # Electra-based, 1024-d hidden
-IMAGE_MODEL_NAME = "vit_base_patch16_224"          # ViT-B/16, 768-d
+# ============================================================
+# MODEL — LOCKED
+# ============================================================
+TEXT_MODEL_NAME  = "csebuetnlp/banglabert_large"   # Electra, 1024-d, 24 layers
+IMAGE_MODEL_NAME = "vit_base_patch16_224"           # ViT-B/16, 768-d, 197 tokens
 
-# Kept for backward compatibility with model.py references
-FALLBACK_TEXT_MODEL_NAME  = "csebuetnlp/banglabert"  # base, 768-d
+# Fallback (kept for backward compat — not used in final training)
+FALLBACK_TEXT_MODEL_NAME  = "csebuetnlp/banglabert"
 FALLBACK_IMAGE_MODEL_NAME = "vit_base_patch16_224"
 USE_FALLBACK              = False
 
-TEXT_HIDDEN_DIM  = 1024
-IMAGE_HIDDEN_DIM = 768
-PROJECTION_DIM   = 768   # W_t: projects text 1024-d -> 768-d to match ViT
-FUSION_HIDDEN_DIM = 768  # CMAF attention dimension
-FUSION_HEADS     = 8
-DROPOUT          = 0.2
-MAX_TEXT_LEN     = 256
+TEXT_HIDDEN_DIM   = 1024
+IMAGE_HIDDEN_DIM  = 768
+PROJECTION_DIM    = 768    # W_t: 1024 -> 768
+FUSION_HIDDEN_DIM = 768    # CMAF attention dim
+FUSION_HEADS      = 8
+DROPOUT           = 0.2
+MAX_TEXT_LEN      = 256
 
-# Memory-safe settings confirmed on Kaggle T4 (14.56GB VRAM)
-FREEZE_TEXT_LAYERS = 12   # freeze first 12 of 24 encoder layers
-FREEZE_IMAGE       = True  # freeze ViT, only train fusion+classifier
-# Result: 159M trainable / 429M total, 9.39GB free after model load
-
-# ============================================================================
-# TRAINING (confirmed working on Kaggle T4)
-# ============================================================================
+# ============================================================
+# TRAINING — LOCKED
+# ============================================================
 SEED                    = 42
-BATCH_SIZE              = 4    # OOM at 16, safe at 4
-GRAD_ACCUM_STEPS        = 8    # effective batch = 32
-EVAL_BATCH_SIZE         = 8
-NUM_EPOCHS              = 10
+BATCH_SIZE              = 8      # T4x2 — verify with memory test first
+EVAL_BATCH_SIZE         = 16
+GRAD_ACCUM_STEPS        = 4      # effective batch = 32
+NUM_EPOCHS              = 15     # early stopping handles it
 LR                      = 2e-5
 WEIGHT_DECAY            = 0.01
 WARMUP_RATIO            = 0.06
@@ -68,51 +67,75 @@ MAX_GRAD_NORM           = 1.0
 EARLY_STOPPING_PATIENCE = 3
 NUM_WORKERS             = 2
 
-TRAIN_RATIO = 0.8
-VAL_RATIO   = 0.1
-TEST_RATIO  = 0.1
+# Memory settings — confirmed on Kaggle T4x2
+FREEZE_TEXT_LAYERS = 6      # freeze first 6 of 24 BERT layers
+FREEZE_IMAGE       = False  # fine-tune ViT — critical for image-text mismatch
 
-# ============================================================================
-# LLM-FAKE GENERATION (OpenRouter) — model IDs verified July 30, 2026
-# ============================================================================
+# Fallback if T4x2 OOMs with above settings
+FALLBACK_FREEZE_TEXT_LAYERS = 12
+FALLBACK_FREEZE_IMAGE       = True
+FALLBACK_BATCH_SIZE         = 4
+
+# ============================================================
+# GENERATION — LOCKED (2 models x 3 strategies = 3,000 samples)
+# ============================================================
 OPENROUTER_API_KEY_ENV = "OPENROUTER_API_KEY"
 OPENROUTER_BASE_URL    = "https://openrouter.ai/api/v1"
 
+# Model IDs verified July 30 2026 via OpenRouter /api/v1/models
 GENERATOR_MODELS = {
-    "gemini-2.5-flash": {
-        "model_id": "google/gemini-2.5-flash",
-        "target_count": 1200,
-    },
     "gpt-4o-mini": {
-        "model_id": "openai/gpt-4o-mini",
-        "target_count": 1000,
-    },
-    "llama-3.3-70b": {
-        "model_id": "meta-llama/llama-3.3-70b-instruct",
-        "target_count": 800,
+        "model_id":     "openai/gpt-4o-mini",
+        "target_count": 1920,   # 640 x 3 strategies
     },
     "claude-haiku": {
-        "model_id": "anthropic/claude-3-haiku",
-        "target_count": 800,
+        "model_id":     "anthropic/claude-3-haiku",
+        "target_count": 1080,   # 360 x 3 strategies
     },
 }
-GENERATION_STRATEGIES = ["rewrite", "extend", "summarize_extend"]
-TOTAL_LLM_FAKE_TARGET = sum(v["target_count"] for v in GENERATOR_MODELS.values())
 
-# Quality filters
-MIN_OUTPUT_CHARS   = 100
-MIN_BANGLA_RATIO   = 0.5
-MAX_SOURCE_OVERLAP = 0.80
+# Per-strategy targets
+STRATEGY_TARGETS = {
+    "gpt-4o-mini": {
+        "rewrite":          640,
+        "extend":           640,
+        "summarize_extend": 640,
+    },
+    "claude-haiku": {
+        "rewrite":          360,
+        "extend":           360,
+        "summarize_extend": 360,
+    },
+}
 
-# ============================================================================
+GENERATION_STRATEGIES  = ["rewrite", "extend", "summarize_extend"]
+TOTAL_LLM_FAKE_TARGET  = 3000   # 3,000 not 3,840 — class weighting handles imbalance
+GENERATION_BATCH_SIZE  = 150    # samples per API batch
+GENERATION_MAX_FAIL    = 3      # consecutive failures before skipping combo
+
+# Quality filters — locked after batch 1 inspection
+MIN_OUTPUT_CHARS   = 200
+MIN_BANGLA_RATIO   = 0.70
+MAX_SOURCE_OVERLAP = 0.65   # 3-gram overlap threshold
+MAX_OUTPUT_CHARS   = 2500
+MIN_SENTENCES      = 2      # minimum Bangla sentence terminators (।)
+
+# ============================================================
 # QC
-# ============================================================================
+# ============================================================
 QC_SAMPLE_SIZE    = 200
 QC_NUM_ANNOTATORS = 2
 
-# ============================================================================
+# ============================================================
 # EXPLAINABILITY
-# ============================================================================
+# ============================================================
 IG_N_STEPS                            = 50
 IG_NUM_QUALITATIVE_EXAMPLES_PER_CLASS = 10
 IG_HUMAN_CHECK_SAMPLE_SIZE            = 40
+
+# ============================================================
+# SPLITS
+# ============================================================
+TRAIN_RATIO = 0.8
+VAL_RATIO   = 0.1
+TEST_RATIO  = 0.1

@@ -1,9 +1,10 @@
 # MultiBanFakeDetect
 
-Multimodal, ternary (Real / Human-Fake / LLM-Fake), explainable Bangla fake news detection.
-**BanglaBERT-Large + ViT-B/16 + Cross-Modal Attention Fusion (CMAF) + Integrated Gradients.**
+**Multimodal Ternary Bangla Fake News Detection with Integrated Gradients Explainability**
 
-Target venue: EMNLP 2026 Findings | Course: CSE-4877 | Institution: IIUC
+BanglaBERT-Large + ViT-B/16 + Cross-Modal Attention Fusion (CMAF)  
+3-class: Real / Human-Fake / LLM-Fake  
+Target: EMNLP 2026 Findings | Course: CSE-4877 | Institution: IIUC  
 Team: Maruf Khan, Minhazul Alam, Saptarshi Barua | Supervisor: Nurul Absar
 
 ---
@@ -12,150 +13,146 @@ Team: Maruf Khan, Minhazul Alam, Saptarshi Barua | Supervisor: Nurul Absar
 
 | Phase | Status | Result |
 |-------|--------|--------|
-| 1. Environment + dataset setup | ✅ Done | 9,600 samples, all paths verified |
-| 2. LLM-fake generation | 🔄 In progress | Gemini 2.5 Flash batch 1 running |
-| 3. Train binary baseline | ✅ Done | macro-F1 = 0.8792 (epoch 3, frozen ViT) |
-| 3. Train ternary model | ⏳ After Phase 2 | target >0.90 |
-| 4. Explainability (IG) | ⏳ After Phase 3 | — |
-| 5. Evaluation + ablations | ⏳ After Phase 4 | — |
-| 6. Paper writing | ⏳ Last | EMNLP 2026 Findings |
+| 1. Environment + dataset | ✅ Done | 9,600 samples verified |
+| 2. LLM-fake generation | ⏳ Day 1-3 | Target: 3,000 samples |
+| 3. QC + manifest | ⏳ Day 3 | After generation |
+| 4. Train ternary model | ⏳ Day 4 | Target macro-F1 > 0.80 |
+| 5. Ablations | ⏳ Day 4 | text-only, image-only |
+| 6. Evaluate | ⏳ Day 5 | All 3 checkpoints |
+| 7. IG explainability | ⏳ Day 5 | 10 examples per class |
+| 8. QC annotation | ⏳ Day 5 | 200 samples, 2 annotators |
+| 9. Paper writing | ⏳ Day 6 | Complete draft |
+| 10. Review + polish | ⏳ Day 7 | Submission ready |
 
 ---
 
-## Confirmed Kaggle Environment
+## ⚠️ SAVE VERSION RULE
+
+**Click Save Version in Kaggle after EVERY step that produces data.**
+- After every generation batch (150 samples)
+- After QC + manifest build
+- After training completes
+- After evaluation
+- After IG
+
+Failing to Save Version loses all data when the session ends. This has happened twice.
+
+---
+
+## Confirmed Kaggle Setup
 
 | Setting | Value |
 |---------|-------|
-| GPU | T4 (14.56 GB VRAM) |
-| Dataset path | `/kaggle/input/datasets/mukaffimoin/multibanfakedetect-multimodal-bangla-fake-news` |
+| GPU | T4 × 2 (15 GB each) |
+| Dataset | `/kaggle/input/datasets/mukaffimoin/multibanfakedetect-multimodal-bangla-fake-news` |
 | Working dir | `/kaggle/working/ML-Research` |
-| BATCH_SIZE | 4 (OOM at 16) |
-| GRAD_ACCUM_STEPS | 8 (effective batch = 32) |
-| FREEZE_TEXT_LAYERS | 12 (of 24) |
-| FREEZE_IMAGE | True |
-| Trainable params | 159M / 429M total |
-| Free VRAM after load | 9.39 GB |
+| Batch size | 8 (with OOM fallback to 4) |
+| Effective batch | 32 (batch 8 × accum 4) |
+| freeze_text_layers | 6 (of 24) |
+| freeze_image | False (ViT fine-tuned) |
 
 ---
 
-## Generator Models (verified July 30, 2026)
+## Generation Plan — LOCKED
 
-| Key | Model ID | Target | Est. cost |
-|-----|----------|--------|-----------|
-| gemini-2.5-flash | `google/gemini-2.5-flash` | 1,200 | ~$1.38 |
-| gpt-4o-mini | `openai/gpt-4o-mini` | 1,000 | ~$0.32 |
-| llama-3.3-70b | `meta-llama/llama-3.3-70b-instruct` | 800 | ~$0.21 |
-| claude-haiku | `anthropic/claude-3-haiku` | 800 | ~$0.60 |
-| **Total** | | **3,800** | **~$2.51** |
+| Model | Strategy | Target | Est. Cost |
+|-------|----------|--------|-----------|
+| GPT-4o Mini | rewrite | 640 | ~$0.19 |
+| GPT-4o Mini | extend | 640 | ~$0.19 |
+| GPT-4o Mini | summarize_extend | 640 | ~$0.19 |
+| Claude Haiku | rewrite | 360 | ~$0.22 |
+| Claude Haiku | extend | 360 | ~$0.22 |
+| Claude Haiku | summarize_extend | 360 | ~$0.22 |
+| **Total** | | **3,000** | **~$1.23** |
 
----
-
-## Bug Fixes (v3, July 30 2026)
-
-| File | Bug | Fix |
-|------|-----|-----|
-| `model.py` | Gate residual only used text_pooled, dropped image when gate=0 | Residual now averages (text_pooled + image_pooled) / 2 |
-| `model.py` | `_freeze_text_layers` assumed BERT structure, silent fail on Electra | Wrapped in try/except, prints clear warning |
-| `model.py` | `FUSION_HIDDEN_DIM` missing from config, crash at import | Added back to config.py |
-| `train.py` | Last partial grad-accum batch never flushed | Added flush after epoch loop |
-| `train.py` | Only macro-F1 printed, can't monitor per-class during training | Per-class P/R/F1 now printed every epoch |
-| `config.py` | Old broken OpenRouter model IDs | Correct IDs verified live July 30, 2026 |
-| `config.py` | `USE_FALLBACK`, `FALLBACK_TEXT_MODEL_NAME` removed but still referenced | Added back for backward compatibility |
-| `dataset.py` | Class weight for missing class exploded to 2,560 | Only weights classes present in split |
+**Why 3,000 not 3,840:** class-weighted loss handles imbalance mathematically.
+**Why no Gemini:** rewrite quality issues; fixed prompt untested.
+**Why no Llama:** proven slow on Bangla prompts.
+**Why all 3 strategies:** rewrite = most realistic misinformation pattern; needed for paper.
 
 ---
 
 ## Kaggle Notebook — Copy-Paste Cells In Order
 
-### Cell 1 — Pull latest code
-```python
-import os
-if os.path.exists("/kaggle/working/ML-Research"):
-    os.chdir("/kaggle/working/ML-Research")
-    !git pull
-else:
-    !git clone https://github.com/maruf99khan/ML-Research.git
-    os.chdir("/kaggle/working/ML-Research")
-```
-
-### Cell 2 — Install dependencies
-```python
-!pip install -r requirements.txt -q
-```
-
-### Cell 3 — Setup environment
+### Setup (run every session)
 ```python
 import os, sys
+
 os.environ["MBFD_BASE_DIR"]    = "/kaggle/working/ML-Research"
 os.environ["MBFD_DATASET_DIR"] = "/kaggle/input/datasets/mukaffimoin/multibanfakedetect-multimodal-bangla-fake-news"
 sys.path.append("/kaggle/working/ML-Research")
 
+os.system("git -C /kaggle/working/ML-Research fetch origin && "
+          "git -C /kaggle/working/ML-Research reset --hard origin/master")
+
 from kaggle_secrets import UserSecretsClient
 os.environ["OPENROUTER_API_KEY"] = UserSecretsClient().get_secret("OPENROUTER_API_KEY")
 
-from configs import config as cfg
-print("Ready. Base dir:", cfg.BASE_DIR)
-print("Generator models:", list(cfg.GENERATOR_MODELS.keys()))
-```
+for key in list(sys.modules.keys()):
+    if any(x in key for x in ['generate','configs','dataset','model','build','train','evaluate','explain','qc']):
+        del sys.modules[key]
 
-### Cell 4 — Build manifest (run once, re-run after adding LLM-fake data)
-```python
 from src.build_manifest import build_manifest
 build_manifest()
+
+from configs import config as cfg
+print("Ready | Total LLM-fake so far:", 0)
 ```
 
-### Cell 5 — Generate LLM-fake samples (Phase 2)
+### Day 1-3 — Generation (repeat per model/strategy)
 ```python
-# Run 100 samples at a time. After ALL models done, re-run Cell 4.
-from src.generate_llm_fake import generate_batch_from_manifest
+from src.generate_llm_fake import generate_batch, total_generated
 
-generate_batch_from_manifest(
-    strategy="rewrite",           # rewrite / extend / summarize_extend
-    generator_key="gemini-2.5-flash",  # see GENERATOR_MODELS in config
-    n=100,
-    manifest_path=cfg.COMBINED_MANIFEST,
-    output_dir=cfg.LLM_FAKE_DIR,
-)
+# Run one at a time — Save Version after each
+generate_batch("gpt-4o-mini",  "rewrite",          640)
+# → SAVE VERSION
+generate_batch("gpt-4o-mini",  "extend",            640)
+# → SAVE VERSION
+generate_batch("gpt-4o-mini",  "summarize_extend",  640)
+# → SAVE VERSION
+generate_batch("claude-haiku", "rewrite",           360)
+# → SAVE VERSION
+generate_batch("claude-haiku", "extend",            360)
+# → SAVE VERSION
+generate_batch("claude-haiku", "summarize_extend",  360)
+# → SAVE VERSION
+
+print("Total generated:", total_generated())
 ```
 
-### Cell 6 — QC sample (Phase 2, after generation)
+### Day 3 — QC + Manifest
 ```python
 from src.qc_sample import draw_sample
-draw_sample(n=200)
-# Have 2 annotators fill the CSV, then:
-# from src.qc_sample import score_agreement
-# score_agreement(path=f"{cfg.QC_DIR}/qc_sample_annotated.csv")
+from src.build_manifest import build_manifest
+
+draw_sample()        # → give CSV to 2 annotators
+build_manifest()     # → rebuilds 3-class manifest
+# → SAVE VERSION
 ```
 
-### Cell 7 — Train ternary model (Phase 3)
+### Day 4 — Memory test + Train
 ```python
-from src.train import train
-train(run_name="cmaf_ternary", mode="full", num_epochs=10)
+from src.train import memory_test, train
+
+memory_test()                                    # verify batch=8 fits
+train("cmaf_ternary", mode="full")               # → SAVE VERSION
+train("text_only",    mode="text_only")          # → SAVE VERSION
+train("image_only",   mode="image_only")         # → SAVE VERSION
 ```
 
-### Cell 8 — Ablations (Phase 3, run after main model)
+### Day 5 — Evaluate + IG
 ```python
-train(run_name="text_only",  mode="text_only",  num_epochs=10)
-train(run_name="image_only", mode="image_only", num_epochs=10)
+from src.evaluate import evaluate_all
+from src.explain  import run_ig
+
+evaluate_all()   # → SAVE VERSION
+run_ig()         # → SAVE VERSION
 ```
 
-### Cell 9 — Evaluate (Phase 5)
+### Day 5 (offline) — QC scoring
 ```python
-from src.evaluate import evaluate_full
-evaluate_full(
-    checkpoint_path=f"{cfg.CHECKPOINT_DIR}/cmaf_ternary_best.pt",
-    output_dir=cfg.METRICS_DIR,
-)
-```
-
-### Cell 10 — Explainability (Phase 4)
-```python
-from src.explain import run_explanations
-run_explanations(
-    checkpoint_path=f"{cfg.CHECKPOINT_DIR}/cmaf_ternary_best.pt",
-    split="test",
-    output_dir=cfg.EXPLAIN_DIR,
-)
+from src.qc_sample import score_agreement
+score_agreement()   # after annotators fill the CSV
 ```
 
 ---
@@ -163,37 +160,49 @@ run_explanations(
 ## File Structure
 
 ```
-configs/config.py           ← ALL settings. Only file to edit per environment.
-src/build_manifest.py       ← builds combined 3-class manifest CSV
-src/generate_llm_fake.py    ← OpenRouter generation (v2, quality-filtered)
-src/qc_sample.py            ← manual QC + inter-annotator kappa
+configs/config.py           ← ALL settings — only file to edit per environment
+src/generate_llm_fake.py    ← OpenRouter generation v5 (autosaves after every sample)
+src/qc_sample.py            ← QC sampling + inter-annotator kappa
+src/build_manifest.py       ← 3-class manifest builder
 src/dataset.py              ← PyTorch Dataset (confirmed working)
-src/model.py                ← BanglaBERT+ViT+CMAF (v3, gate bug fixed)
-src/train.py                ← training loop (v2, grad-accum flush fixed)
-src/evaluate.py             ← test metrics, confusion matrix, per-generator
-src/explain.py              ← Integrated Gradients + plausibility check
+src/model.py                ← BanglaBERT+ViT+CMAF v3 (all bugs fixed)
+src/train.py                ← Training loop (OOM fallback, per-class F1)
+src/evaluate.py             ← Test evaluation + per-generator analysis
+src/explain.py              ← Integrated Gradients + plausibility template
 requirements.txt            ← pip install -r requirements.txt
 ```
 
 ---
 
-## If Something Breaks
+## Key Bugs Fixed (for paper methodology section)
 
-Paste:
-1. Full error traceback
-2. Which cell you ran
-3. What you expected vs what happened
+| Bug | Impact | Fix |
+|-----|--------|-----|
+| Gate residual dropped image when gate→0 | Silent — wrong fusion | Average (text+image)/2 |
+| _freeze_text_layers silent fail on Electra | Froze nothing | try/except with warning |
+| ForwardWrapper arg order wrong | Silent — corrupted IG attributions | (embeds, pixels, mask) |
+| Grad accum last batch never flushed | Weights not updated last N steps | Flush after epoch loop |
+| Class weight explosion for missing class | Loss explosion | Only weight present classes |
+| System prompt leaked project name | Model wrote project name in output | Removed all identifying info |
+| Generation log not per-sample | Crash = lost all progress | Save after every accepted sample |
 
 ---
 
-## Outstanding TODOs Before Submission
+## Success Criteria
 
-- [ ] Locate "Explainable Fake News Detection in Bengali via LLM-Guided Hybrid Representations" — verify it doesn't conflict with novelty claim 3
-- [ ] Complete Phase 2 generation (~3,800 samples across 4 models × 3 strategies)
-- [ ] Manual QC (200 samples, 2 annotators, report Cohen's kappa)
-- [ ] Rebuild manifest with 3 classes after generation
-- [ ] Train ternary model (target macro-F1 > 0.90)
-- [ ] Run text-only and image-only ablations
-- [ ] Run IG explainability + human plausibility check (40 samples, 2 annotators)
-- [ ] Write paper
-- [ ] Re-run literature search 1-2 weeks before submission (fast-moving area)
+| Metric | Minimum | Good | Target |
+|--------|---------|------|--------|
+| Ternary macro-F1 | 0.75 | 0.82 | 0.87 |
+| Real F1 | 0.85 | 0.90 | 0.93 |
+| Human-Fake F1 | 0.70 | 0.78 | 0.83 |
+| LLM-Fake F1 | 0.75 | 0.85 | 0.90 |
+| LLM-Fake recall > Human-Fake recall | Required | Required | Required |
+
+---
+
+## Outstanding TODOs
+
+- [ ] Identify second QC annotator (must read Bangla) — needed before Day 3
+- [ ] Locate "Explainable FND in Bengali via LLM-Guided Hybrid Representations" paper — verify novelty
+- [ ] Add credits to OpenRouter if balance drops below $0.30 during generation
+- [ ] Run memory test (Day 4) before committing to full training

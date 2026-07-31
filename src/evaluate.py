@@ -1,25 +1,25 @@
 """
-Full evaluation on the test split: overall metrics, confusion matrix, and a
-per-generator breakdown of the LLM-fake class (Gemini vs GPT-4o-mini vs Llama
-vs Claude Haiku) -- this is the Phase 5 addition testing whether the
-detectability asymmetry reported in "When Machines Lie Differently" (AI-fake
-easier to catch than human-fake) replicates here, and whether it varies by
-which model generated the fake.
+Evaluation script — FINAL
+
+Runs full test-set evaluation for all 3 checkpoints:
+  cmaf_ternary (full model)
+  text_only    (ablation)
+  image_only   (ablation)
+
+Outputs per checkpoint:
+  - macro-F1, per-class P/R/F1
+  - confusion matrix (saved as JSON + printed)
+  - per-generator LLM-fake recall
+  - human-fake vs LLM-fake detectability comparison
 
 Usage:
-    python src/evaluate.py --checkpoint outputs/checkpoints/cmaf_full_best.pt
+    from src.evaluate import evaluate_all
+    evaluate_all()
 """
-import argparse
-import json
-import os
-import sys
-
-import matplotlib.pyplot as plt
-import numpy as np
+import gc, json, os, sys
 import pandas as pd
-import seaborn as sns
 import torch
-from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.metrics import classification_report, confusion_matrix, f1_score
 from torch.utils.data import DataLoader
 from transformers import AutoTokenizer
 
@@ -29,100 +29,125 @@ from src.dataset import MultiBanFakeDetectDataset
 from src.model import MultiBanFakeDetectModel
 
 
-def plot_confusion_matrix(cm, labels, out_path):
-    plt.figure(figsize=(6, 5))
-    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=labels, yticklabels=labels)
-    plt.xlabel("Predicted")
-    plt.ylabel("True")
-    plt.title("Confusion Matrix (Test Set)")
-    plt.tight_layout()
-    plt.savefig(out_path, dpi=150)
-    plt.close()
+def evaluate_checkpoint(run_name: str, mode: str = "full") -> dict | None:
+    ckpt_path = os.path.join(cfg.CHECKPOINT_DIR, f"{run_name}_best.pt")
+    if not os.path.exists(ckpt_path):
+        print(f"  ⚠️  No checkpoint for {run_name} — skipping")
+        return None
 
-
-def evaluate_full(checkpoint_path: str, output_dir: str):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    text_model_name = cfg.FALLBACK_TEXT_MODEL_NAME if cfg.USE_FALLBACK else cfg.TEXT_MODEL_NAME
-    tokenizer = AutoTokenizer.from_pretrained(text_model_name)
+    device    = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    tokenizer = AutoTokenizer.from_pretrained(cfg.TEXT_MODEL_NAME)
+    test_ds   = MultiBanFakeDetectDataset(cfg.COMBINED_MANIFEST, "test", tokenizer)
+    test_load = DataLoader(test_ds, batch_size=cfg.EVAL_BATCH_SIZE,
+                            shuffle=False, num_workers=cfg.NUM_WORKERS)
 
     model = MultiBanFakeDetectModel().to(device)
-    ckpt = torch.load(checkpoint_path, map_location=device)
+    ckpt  = torch.load(ckpt_path, map_location=device)
     model.load_state_dict(ckpt["model_state_dict"])
     model.eval()
 
-    test_ds = MultiBanFakeDetectDataset(cfg.COMBINED_MANIFEST, "test", tokenizer)
-    test_loader = DataLoader(test_ds, batch_size=cfg.EVAL_BATCH_SIZE, shuffle=False,
-                              num_workers=cfg.NUM_WORKERS)
-
     all_preds, all_labels, all_ids = [], [], []
     with torch.no_grad():
-        for batch in test_loader:
-            logits = model(
-                batch["input_ids"].to(device),
-                batch["attention_mask"].to(device),
-                batch["pixel_values"].to(device),
-            )
-            preds = logits.argmax(dim=-1).cpu().tolist()
-            all_preds.extend(preds)
-            all_labels.extend(batch["label"].tolist())
+        for batch in test_load:
+            ids  = batch["input_ids"].to(device)
+            mask = batch["attention_mask"].to(device)
+            imgs = batch["pixel_values"].to(device)
+            labs = batch["label"].to(device)
+            if mode == "text_only":
+                imgs = torch.zeros_like(imgs)
+            elif mode == "image_only":
+                ids  = torch.zeros_like(ids)
+                mask = torch.ones_like(mask)
+            logits = model(ids, mask, imgs)
+            all_preds.extend(logits.argmax(-1).cpu().tolist())
+            all_labels.extend(labs.cpu().tolist())
             all_ids.extend(batch["sample_id"])
 
-    labels_str = [cfg.ID2LABEL[i] for i in range(cfg.NUM_CLASSES)]
-    report = classification_report(all_labels, all_preds, target_names=labels_str,
+    label_names = [cfg.ID2LABEL[i] for i in range(cfg.NUM_CLASSES)]
+    report = classification_report(all_labels, all_preds,
+                                    target_names=label_names,
                                     output_dict=True, zero_division=0)
-    cm = confusion_matrix(all_labels, all_preds, labels=list(range(cfg.NUM_CLASSES)))
+    cm     = confusion_matrix(all_labels, all_preds,
+                               labels=list(range(cfg.NUM_CLASSES)))
 
-    os.makedirs(output_dir, exist_ok=True)
-    with open(os.path.join(output_dir, "test_classification_report.json"), "w") as f:
-        json.dump(report, f, indent=2)
-    plot_confusion_matrix(cm, labels_str, os.path.join(output_dir, "confusion_matrix.png"))
+    print(f"\n{'='*60}")
+    print(f"{run_name} — macro-F1: {report['macro avg']['f1-score']:.4f}")
+    print(f"{'='*60}")
+    for cls in label_names:
+        if cls in report:
+            r = report[cls]
+            print(f"  {cls}: P={r['precision']:.3f} R={r['recall']:.3f} "
+                  f"F1={r['f1-score']:.3f} n={int(r['support'])}")
+    print(f"\n  Confusion matrix:\n{cm}")
 
-    print("Overall macro-F1:", report["macro avg"]["f1-score"])
-    print(pd.DataFrame(report).T)
-
-    # ---- Per-generator breakdown for the LLM-fake class ----
-    manifest = pd.read_csv(cfg.COMBINED_MANIFEST)
-    manifest = manifest.set_index("sample_id")
+    # Per-generator LLM-fake recall
+    mdf     = pd.read_csv(cfg.COMBINED_MANIFEST).set_index("sample_id")
     pred_df = pd.DataFrame({"sample_id": all_ids, "pred": all_preds, "true": all_labels})
     pred_df["generator"] = pred_df["sample_id"].map(
-        lambda sid: manifest.loc[sid, "generator"] if sid in manifest.index and "generator" in manifest.columns else None
+        lambda sid: mdf.loc[sid, "generator"]
+        if sid in mdf.index and "generator" in mdf.columns
+        and pd.notna(mdf.loc[sid, "generator"]) else None
     )
-    llm_fake_id = cfg.LABEL2ID["llm_fake"]
-    llm_subset = pred_df[pred_df["true"] == llm_fake_id]
+    llm_id  = cfg.LABEL2ID["llm_fake"]
+    hf_id   = cfg.LABEL2ID["human_fake"]
+    llm_sub = pred_df[(pred_df["true"] == llm_id) & pred_df["generator"].notna()]
 
-    if llm_subset["generator"].notna().any():
-        per_gen = llm_subset.groupby("generator").apply(
-            lambda g: (g["pred"] == llm_fake_id).mean()
-        ).rename("recall_llm_fake_detected")
-        per_gen_path = os.path.join(output_dir, "per_generator_recall.csv")
-        per_gen.to_csv(per_gen_path)
-        print("\nPer-generator LLM-fake detection recall:")
+    if len(llm_sub) > 0:
+        per_gen = llm_sub.groupby("generator").apply(
+            lambda g: (g["pred"] == llm_id).mean()
+        ).rename("recall_llm_fake")
+        print(f"\n  Per-generator LLM-fake recall:")
         print(per_gen)
-        print(f"Saved -> {per_gen_path}")
+        per_gen.to_csv(os.path.join(cfg.METRICS_DIR, f"{run_name}_per_generator.csv"))
+
+    # Human-fake vs LLM-fake asymmetry
+    hf_recall  = report.get(cfg.ID2LABEL[hf_id],  {}).get("recall", 0)
+    llm_recall = report.get(cfg.ID2LABEL[llm_id], {}).get("recall", 0)
+    print(f"\n  Human-Fake recall : {hf_recall:.3f}")
+    print(f"  LLM-Fake recall   : {llm_recall:.3f}")
+    if llm_recall > hf_recall:
+        print("  → LLM-Fake easier to detect (consistent with English findings)")
     else:
-        print("\nNo 'generator' column found on manifest for LLM-fake rows; "
-              "skipping per-generator breakdown.")
+        print("  → Human-Fake easier to detect (does NOT replicate English asymmetry)")
 
-    # ---- Human-fake vs LLM-fake detectability comparison ----
-    human_fake_id = cfg.LABEL2ID["human_fake"]
-    human_recall = report[cfg.ID2LABEL[human_fake_id]]["recall"]
-    llm_recall = report[cfg.ID2LABEL[llm_fake_id]]["recall"]
-    print(f"\nHuman-Fake recall: {human_recall:.3f} | LLM-Fake recall: {llm_recall:.3f}")
-    if llm_recall > human_recall:
-        print("Consistent with the English-language finding that LLM-generated fake "
-              "content is easier to detect than human-written fake content.")
-    else:
-        print("Does NOT replicate the English-language asymmetry -- worth discussing "
-              "in the paper's error analysis / limitations.")
+    # Save results
+    out = {
+        "run_name":         run_name,
+        "report":           report,
+        "confusion_matrix": cm.tolist(),
+        "hf_recall":        hf_recall,
+        "llm_recall":       llm_recall,
+    }
+    with open(os.path.join(cfg.METRICS_DIR, f"{run_name}_test_results.json"), "w") as f:
+        json.dump(out, f, indent=2)
 
-
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--checkpoint", required=True)
-    parser.add_argument("--output-dir", default=cfg.METRICS_DIR)
-    args = parser.parse_args()
-    evaluate_full(args.checkpoint, args.output_dir)
+    del model; gc.collect(); torch.cuda.empty_cache()
+    return out
 
 
-if __name__ == "__main__":
-    main()
+def evaluate_all() -> dict:
+    results = {}
+    for run_name, mode in [
+        ("cmaf_ternary", "full"),
+        ("text_only",    "text_only"),
+        ("image_only",   "image_only"),
+    ]:
+        r = evaluate_checkpoint(run_name, mode)
+        if r:
+            results[run_name] = r
+
+    # Summary table
+    print(f"\n{'='*60}")
+    print("SUMMARY")
+    print(f"{'='*60}")
+    print(f"{'Model':<20} {'Macro-F1':<12} {'Real F1':<12} {'HFake F1':<12} {'LLM F1'}")
+    for run, r in results.items():
+        rep = r["report"]
+        print(f"  {run:<18} "
+              f"{rep['macro avg']['f1-score']:.4f}      "
+              f"{rep.get('real',{}).get('f1-score',0):.4f}      "
+              f"{rep.get('human_fake',{}).get('f1-score',0):.4f}      "
+              f"{rep.get('llm_fake',{}).get('f1-score',0):.4f}")
+
+    print(f"\n⚠️  CLICK SAVE VERSION IN KAGGLE NOW")
+    return results
