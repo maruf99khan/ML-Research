@@ -1,0 +1,41 @@
+{
+  "macro_f1": 0.9207,
+  "real": {
+    "P": 0.872,
+    "R": 0.898,
+    "F1": 0.885
+  },
+  "human_fake": {
+    "P": 0.896,
+    "R": 0.865,
+    "F1": 0.88
+  },
+  "llm_fake": {
+    "P": 0.994,
+    "R": 1.0,
+    "F1": 0.997
+  },
+  "confusion_matrix": [
+    [
+      431,
+      48,
+      1
+    ],
+    [
+      63,
+      415,
+      2
+    ],
+    [
+      0,
+      0,
+      480
+    ]
+  ],
+  "per_generator_llm_recall": {
+    "claude-haiku": 1.0,
+    "gpt-4o-mini": 1.0
+  },
+  "hf_recall": 0.865,
+  "llm_recall": 1.0
+}
