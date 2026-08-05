@@ -1,5 +1,5 @@
-
-data/combined_manifest.csv
 *.pyc
 __pycache__/
-outputs/
+data/combined_manifest.csv
+outputs/checkpoints/
+outputs/logs/
