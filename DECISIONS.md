@@ -103,7 +103,9 @@
 **Reason:** Batch=8 confirmed to fit on T4×2 via memory test. Effective batch=32 is standard for BERT fine-tuning. Gradient accumulation avoids OOM while maintaining effective batch size.
 
 ### Why early stopping patience=3?
-**Reason:** Training showed clear overfitting pattern — val F1 peaked at epoch 12 (0.9290) then declined. Patience=3 stopped at epoch 14, saving compute and preventing overfitted checkpoint selection.
+**Reason:** Training showed clear overfitting pattern — val F1 peaks then declines while train loss keeps dropping. Patience=3 stops training once val F1 fails to improve for 3 consecutive epochs.
+Original run: peaked epoch 12 (val=0.9290), stopped epoch 14.
+Retrain (Aug 9): peaked epoch 3 (val=0.9409), stopped epoch 6 — faster convergence due to DataParallel stochasticity. Both within expected variance.
 
 ---
 
@@ -162,7 +164,10 @@
 ### Why Kaggle Dataset for checkpoints?
 **Problem:** Checkpoints are ~1.6GB — too large for GitHub (100MB file limit).
 **Solution:** Upload to Kaggle Dataset via kaggle API. Accessible in future sessions as input dataset.
-**Proven working:** Checkpoint verified epoch=12, val_macro_f1=0.9290, 563 parameter tensors.
+**Current checkpoints (Aug 9 2026):**
+- cmaf_ternary_best.pt: epoch=3, val=0.9409, test=0.9285 ✅
+- image_only_best.pt: epoch=2, val=0.4019, test=0.4475 ✅
+Both in dataset: maruf99khan/multibanfakedetect-checkpoints
 
 ### Why NOT Kaggle Save Version?
 **Reason:** Save Version (Quick Save) saves notebook output cells only, NOT /kaggle/working files. Save & Run All reruns all cells (takes hours). Neither reliably saves large files. Proven unreliable in 2 session wipes.

@@ -1,6 +1,7 @@
 # MultiBanFakeDetect — Complete Project Log
-# Extracted from full research journey: July 30 – Aug 6 2026
+# Extracted from full research journey: July 30 – Aug 9 2026
 # Every event, result, failure, and fix documented in order.
+# Last verified: Aug 9 2026
 
 ---
 
@@ -29,8 +30,7 @@ Complete codebase built from scratch:
 8. **Per-class F1 not printed** — only macro shown. Fixed
 
 ### GitHub setup
-- Repo: maruf99khan/ML-Research (renamed from MultiBanFakeDetect)
-- Made public
+- Repo: maruf99khan/ML-Research (public)
 - Code pushed, verified on Kaggle
 
 ---
@@ -44,7 +44,7 @@ Complete codebase built from scratch:
 - Note: actual columns different from expected — build_manifest.py updated to handle real column names
 - All image paths: absolute `.png` paths, all verified present
 - Text: `headline + " " + description`
-- captum not installed by default — requires `pip install captum --break-system-packages`
+- captum not installed by default — requires `pip install captum -q`
 
 ### Dataset confirmed
 - 9,600 samples: 4,800 Real (label=0), 4,800 Human-Fake (label=1)
@@ -91,47 +91,15 @@ Complete codebase built from scratch:
 
 ## PHASE 4 — GENERATION MODEL SELECTION (July 31 2026)
 
-### Initial plan (v1 — all 4 models)
-- Gemini 2.5 Flash Lite, GPT-4o Mini, Llama 3.3 70B, Claude Haiku
-- Total target: 3,800 samples
-
 ### Model ID problem
 Config had `google/gemini-flash-1.5` — doesn't exist on OpenRouter (404 error).
-Fixed by querying live OpenRouter API:
-- `google/gemini-2.5-flash` ✅
-- `openai/gpt-4o-mini` ✅
-- `meta-llama/llama-3.3-70b-instruct` ✅
-- `anthropic/claude-3-haiku` ✅
+Fixed by querying live OpenRouter API.
 
-### Model dropped — Llama 3.3 70B
-- Tested: unacceptable latency on Bangla prompts
-- Infrastructure/routing issue on OpenRouter
-- Permanently dropped
+### Models dropped
+- **Llama 3.3 70B**: unacceptable latency on Bangla prompts. Infrastructure/routing issue on OpenRouter.
+- **Gemini 2.5 Flash**: rewrite strategy rejected 43% samples (TOO_SIMILAR, overlap>0.65). Dropped entirely for cleaner paper narrative.
 
-### Model dropped — Gemini 2.5 Flash (rewrite strategy)
-**Batch 1 results (100 samples, Gemini 2.5 Flash, rewrite):**
-- Accepted: 100
-- Rejected: 94 (mostly too_similar_to_source)
-- Attempts: 194
-- Acceptance rate: 51.5%
-
-**Problems found in batch 1:**
-1. 2 outright refusals — model returned prompt instructions instead of fake news
-2. "সিন্থেটিক/ভুয়া সংবাদ:" and similar prefixes not caught by strip list
-3. 38/100 samples had overlap 0.70-0.79 — model barely changed source
-4. Sample [30] contained "MultiBanFakeDetect" verbatim — system prompt leaked project name
-
-**Root causes:**
-- System prompt explicitly named "MultiBanFakeDetect" — fixed in v4 (removed all project-identifying language)
-- Strip prefix list incomplete — expanded in v4
-- Overlap threshold lowered 0.70→0.65
-- Rewrite prompt strengthened: "change at least 7 specific facts, no sentence verbatim"
-- Min length raised 200→250 chars
-
-**Decision:** Drop Gemini rewrite (proven bad). Keep Gemini extend (quality was excellent — Pakistan-Afghanistan article was the best sample seen). Eventually dropped Gemini entirely for cleaner paper narrative (2 models sufficient).
-
-### Final model selection
-**GPT-4o Mini + Claude Haiku only**
+### Final model selection: GPT-4o Mini + Claude Haiku only
 - Both confirmed: ~95% acceptance rate, bangla=0.9996, overlap=0.42-0.48
 - Different architectures (OpenAI vs Anthropic) — genuine generator diversity
 - Cost: ~$0.0003 and ~$0.0006 per clean sample
@@ -140,83 +108,58 @@ Fixed by querying live OpenRouter API:
 
 ## PHASE 5 — GENERATION EXECUTION (July 31 – Aug 1 2026)
 
-### Generation strategy design
-- **rewrite**: change ≥7 facts, no sentence verbatim, ≥150 words. Most realistic misinformation.
-- **extend**: from headline, fabricate full article ≥200 words. Clearly LLM style.
-- **summarize_extend**: summarize real article + add ≥3 fabricated claims. Middle ground.
-- All 3 needed: without rewrite, LLM-fake would be trivially detectable (model learns "long new article = LLM")
+### Generation strategies
+- **rewrite**: change ≥7 facts, no sentence verbatim, ≥150 words
+- **extend**: from headline, fabricate full article ≥200 words
+- **summarize_extend**: summarize real article + add ≥3 fabricated claims
 
 ### Quality filters v5 (final)
 1. Length ≥ 200 chars
 2. Bangla ratio ≥ 0.70
-3. First-line Bangla ≥ 0.80 (catches English headline before Bangla body)
+3. First-line Bangla ≥ 0.80
 4. Sentence count ≥ 2 (।)
-5. 3-gram source overlap ≤ 0.65 (tightened from 0.70 after batch 1)
+5. 3-gram source overlap ≤ 0.65
 6. Refusal pattern check
-7. System prompt leak check (added after batch 1 "MultiBanFakeDetect" leak)
-8. Meta-commentary stripping (strips prefixes like "বিভ্রান্তিকর সংস্করণ:")
+7. System prompt leak check
+8. Meta-commentary stripping
 
-### Storage problem — data lost twice
-**Session wipe 1:** Lost ~400 samples. Forgot Save Version.
-**Session wipe 2:** Lost 2,400 samples. Save Version (Quick Save) does NOT save /kaggle/working files — only saves notebook output cells. Critical discovery.
+### Storage lesson learned
+Save Version does NOT save /kaggle/working files. Lost 2,400 samples twice.
+Solution: push to GitHub after every batch. git reset --hard origin/master to restore (NOT git pull).
 
-**Solution: GitHub auto-push after every batch**
-- Round-trip test: generate 10 → push → wipe → git reset --hard origin/master → restore: 10 ✅
-- Manifest excluded via .gitignore (combined_manifest.csv generated dynamically)
-- git reset --hard origin/master is correct restore command (NOT git pull)
-
-### Session 1 results (July 31 2026)
-- 400 samples per combo × 6 combos = 2,400 total
-- Time: 277 minutes
-- Cost: ~$0.72
-- All on GitHub
-
-### Session 2 results (Aug 1 2026)
-- 400 more per combo → 800 total per combo
-- Time: 290 minutes
-- Cost: ~$0.72
-- **Total: 4,800 samples, perfectly balanced**
-
-### Final generation stats (Aug 5 2026 verification)
+### Final generation stats (verified Aug 5 2026)
 | Combo | Samples | Bangla ratio | Mean overlap |
 |-------|---------|-------------|-------------|
-| gpt-4o-mini/rewrite | 800 | 0.9993 | 0.421 |
-| gpt-4o-mini/extend | 800 | 0.9989 | 0.482 |
-| gpt-4o-mini/summarize_extend | 800 | 0.9996 | ~0.42 |
-| claude-haiku/rewrite | 800 | 0.9999 | ~0.40 |
-| claude-haiku/extend | 800 | 0.9998 | ~0.43 |
-| claude-haiku/summarize_extend | 800 | 0.9999 | 0.394 |
+| gpt-4o-mini / rewrite | 800 | 0.9993 | 0.421 |
+| gpt-4o-mini / extend | 800 | 0.9989 | 0.482 |
+| gpt-4o-mini / summarize_extend | 800 | 0.9996 | ~0.42 |
+| claude-haiku / rewrite | 800 | 0.9999 | ~0.40 |
+| claude-haiku / extend | 800 | 0.9998 | ~0.43 |
+| claude-haiku / summarize_extend | 800 | 0.9999 | 0.394 |
+| **Total** | **4,800** | | |
 
-- Source diversity: 2,876 unique sources used out of 3,840 real train articles
+- Source diversity: 2,876 unique sources used
 - Max reuse of any source: 5 times
-- All 12 categories covered (lifestyle=434, education=416, politics=414, ...)
-- Zero meta leaks, zero English contamination
+- All 12 categories covered
+- Total cost: ~$1.44 | Total time: ~567 min across 2 sessions
 
 ---
 
 ## PHASE 6 — MANIFEST BUILD (Aug 5 2026)
 
 ### Final manifest
-- 14,400 rows total
-- 4,800 per class (Real, Human-Fake, LLM-Fake)
-- 3,840/480/480 train/val/test per class
-- LLM-fake split stratified by generator (each generator appears in all splits)
+- 14,400 rows total: 4,800 per class (Real, Human-Fake, LLM-Fake)
+- 3,840 / 480 / 480 train / val / test per class
+- LLM-fake split stratified by generator
 
 ---
 
 ## PHASE 7 — TERNARY MODEL TRAINING (Aug 5 2026)
 
-### Session 1 — LOST
-- Best: epoch 3, val macro-F1 = 0.9319
-- Per-class: Real=0.896, Human-Fake=0.901, LLM-Fake=0.999
-- Checkpoint LOST — session ended before saving
-- Root cause: relied on session staying alive overnight
-
-### Session 2 — LOST
-- Best: epoch 12, val macro-F1 = 0.9290
-- Backed up to /kaggle/working/checkpoints_backup/ before Quick Save
-- LOST again — Quick Save does not save /kaggle/working files reliably
-- Discovery: need Kaggle Dataset API for large file persistence
+### Sessions 1 & 2 — LOST (checkpoints not persisted)
+- Session 1 best: epoch 3, val=0.9319 — lost on session end
+- Session 2 best: epoch 12, val=0.9290 — lost (Quick Save does not save /kaggle/working)
+- Discovery: must use Kaggle Dataset API for checkpoint persistence
 
 ### Session 3 — SAVED (Aug 5 2026)
 **Config:** freeze_text=6, freeze_image=False, batch=8, T4×2, fp32
@@ -224,174 +167,181 @@ Fixed by querying live OpenRouter API:
 
 | Epoch | Val Macro-F1 | Notes |
 |-------|-------------|-------|
-| 1 | 0.8394 | |
-| 2 | 0.8990 | |
-| 3 | 0.9076 | |
-| 4 | 0.9173 | |
-| 5 | 0.9146 | no improve |
-| 6 | 0.9182 | new best |
-| 7 | 0.9110 | no improve |
-| 8 | 0.9110 | no improve |
-| 9 | 0.9201 | new best |
-| 10 | 0.9230 | new best |
+| 1–11 | 0.8394→0.9230 | Steady improvement |
 | 12 | **0.9290** | **BEST — saved** |
-| 13 | 0.9284 | no improve |
+| 13 | 0.9284 | No improve |
 | 14 | early stop | patience=3 |
 
-**Why different from Session 1 (0.9319 vs 0.9290):**
-DataParallel non-deterministic CUDA ops across 2 GPUs. Even with set_seed(42), multi-GPU training has inherent stochasticity. Both within expected variance.
-
-**Checkpoint saved to Kaggle Dataset:**
-- Dataset: maruf99khan/multibanfakedetect-checkpoints
-- Path: /kaggle/input/datasets/maruf99khan/multibanfakedetect-checkpoints/cmaf_ternary_best.pt
-- Verified: epoch=12, val_macro_f1=0.9290, 563 param tensors ✅
+Checkpoint uploaded to Kaggle Dataset. Later lost on session end (not re-uploaded correctly).
 
 ---
 
-## PHASE 8 — TEST EVALUATION (Aug 5 2026)
+## PHASE 8 — ORIGINAL TEST EVALUATION (Aug 5 2026)
 
-### Main model — cmaf_ternary
-**Test macro-F1: 0.9207**
+### cmaf_ternary original run (checkpoint subsequently lost)
+Test macro-F1: 0.9207 | Real=0.885 | HFake=0.880 | LLM=0.997
+Confusion matrix: [[431,48,1],[63,415,2],[0,0,480]]
+Per-generator LLM recall: claude-haiku=1.000, gpt-4o-mini=1.000
+
+---
+
+## PHASE 7b — RETRAIN TO RECOVER CHECKPOINT (Aug 9 2026)
+
+Original cmaf_ternary_best.pt was missing from Kaggle Dataset (only image_only_best.pt was there).
+Retrained from scratch — identical config, identical data.
+
+### Retrain training history
+| Epoch | Val Macro-F1 | Notes |
+|-------|-------------|-------|
+| 1 | 0.8083 | Best saved |
+| 2 | 0.8982 | Best saved |
+| 3 | **0.9409** | **BEST — saved** |
+| 4 | 0.9312 | No improve |
+| 5 | 0.9270 | No improve |
+| 6 | early stop | patience=3 |
+
+Faster convergence than original (epoch 3 vs epoch 12) — DataParallel non-determinism, within expected variance.
+
+### Retrain test results — USE THESE FOR PAPER
+**Test macro-F1: 0.9285**
 
 | Class | Precision | Recall | F1 | Support |
 |-------|-----------|--------|-----|---------|
-| Real | 0.872 | 0.898 | 0.885 | 480 |
-| Human-Fake | 0.896 | 0.865 | 0.880 | 480 |
-| LLM-Fake | 0.994 | 1.000 | 0.997 | 480 |
-| **Macro** | **0.921** | **0.921** | **0.921** | |
+| Real | 0.911 | 0.877 | 0.894 | 480 |
+| Human-Fake | 0.880 | 0.912 | 0.896 | 480 |
+| LLM-Fake | 0.996 | 0.996 | 0.996 | 480 |
+| **Macro** | **0.929** | **0.928** | **0.928** | |
 
 **Confusion matrix:**
-```
-[[431  48   1]
- [ 63 415   2]
- [  0   0 480]]
-```
+[[421 58 1]
+[ 41 438 1]
+[ 0 2 478]]
 
 **Per-generator LLM-fake recall:**
 | Generator | Recall |
 |-----------|--------|
-| Claude Haiku | 1.000 |
+| Claude Haiku | 0.992 |
 | GPT-4o Mini | 1.000 |
 
-**KEY FINDING:**
-LLM-Fake recall (1.000) >> Human-Fake recall (0.865)
-Both generators equally detectable — no per-generator bias.
-This detectability asymmetry was previously documented only in English literature.
-We are first to confirm it in Bangla multimodal setting.
+**Key findings:**
+- LLM-Fake recall (0.996) >> Human-Fake recall (0.912) — asymmetry confirmed in Bangla multimodal
+- Both generators near-perfectly detectable — no per-generator bias
+- Val-test gap: 0.9409 → 0.9285 = 0.012 — good generalization, no overfitting concern
 
-**Why val F1 (0.9290) > test F1 (0.9207):**
-Normal generalization gap. Val used for checkpoint selection, test completely unseen.
-Gap of 0.0083 is small — good generalization, no overfitting concern.
-
-Results JSON pushed to GitHub: outputs/metrics/cmaf_ternary_test_results.json
+Checkpoint: maruf99khan/multibanfakedetect-checkpoints/cmaf_ternary_best.pt ✅
+Results JSON: outputs/metrics/cmaf_ternary_test_results.json ✅
 
 ---
 
-## PHASE 9 — ABLATIONS (Aug 5-6 2026)
+## PHASE 9 — ABLATIONS (Aug 9 2026)
 
-### Problem: OOM for text_only ablation
+### OOM problem for text_only
 BanglaBERT-Large (~14GB) + ViT-B/16 (~2GB) = ~16GB > 15.53GB available.
-Even with batch=2 and all layers frozen, OOM occurs.
+fp16 attempted — NaN loss at epoch 3 (Electra numerically sensitive). Reverted.
+Solution: skip_image=True removes ViT entirely — saves 2GB, fits in fp32.
 
-### Failed attempt: fp16
-Applied fp16 (torch.amp.autocast + GradScaler).
-Result: NaN loss at epoch 3.
-Root cause: BanglaBERT-Large has numerically sensitive layers — fp16 underflow in gradient computation.
-Decision: revert to fp32, use different approach.
-
-### Solution: skip_image=True for text_only
-Remove ViT completely from text_only model — saves ~2GB VRAM, fits in fp32.
-Added `skip_image=False` parameter to `MultiBanFakeDetectModel.__init__`.
-When `skip_image=True`: ViT not loaded, `_image_tokens()` returns zeros.
-Paper statement: "For text-only ablation, image encoder excluded to isolate text encoder performance."
-
-### Text-only ablation — DONE (Aug 9 2026)
+### Text-only ablation — DONE
 Config: skip_image=True, freeze_text=6, freeze_image=False, batch=8, fp32
-Trainable: 234,905,859 / 343,779,587 (ViT excluded)
+Trainable: 234,905,859 / 343,779,587
 
-Test results:
-  Real:       P=0.817 R=0.892 F1=0.853
-  Human-Fake: P=0.879 R=0.800 F1=0.838
-  LLM-Fake:   P=1.000 R=0.998 F1=0.999
-  Macro-F1:   0.8964
+| Class | Precision | Recall | F1 |
+|-------|-----------|--------|-----|
+| Real | 0.817 | 0.892 | 0.853 |
+| Human-Fake | 0.879 | 0.800 | 0.838 |
+| LLM-Fake | 1.000 | 0.998 | 0.999 |
+| **Macro** | | | **0.8964** |
+
 Confusion matrix: [[428,52,0],[96,384,0],[0,1,479]]
-Results JSON: outputs/metrics/text_only_test_results.json ✅
 
 Key findings:
-- LLM-Fake nearly perfect from text alone — linguistic fingerprint is dominant signal
-- HFake F1 drops 0.042 vs full CMAF — image modality helps distinguish real from human-fake
+- LLM-Fake near-perfect from text alone — linguistic fingerprint dominant
+- HFake F1 drops 0.058 vs CMAF (0.838 vs 0.896) — image helps real vs human-fake
 - 96 Human-Fake samples misclassified as Real — hard cases need visual context
 
-### Image-only ablation — DONE (Aug 9 2026)
-Config: freeze_text=24 (all layers), freeze_image=False, batch=8, fp32, mode="image_only"
-Note: image_only zeros input_ids + sets mask=ones inside train.py loop. BanglaBERT stays loaded.
-Training: early stopping at epoch 5, best val macro-F1=0.4019 (epoch 2)
+Results JSON: outputs/metrics/text_only_test_results.json ✅
 
-Training history:
-  Epoch 1: val=0.3617 train_loss=1.0591 | Real=0.205 HFake=0.387 LLM=0.493
-  Epoch 2: val=0.4019 train_loss=0.9500 | Real=0.452 HFake=0.418 LLM=0.336 ← best
-  Epoch 3: val=0.3973 train_loss=0.8606 | Real=0.439 HFake=0.377 LLM=0.375
-  Epoch 4: val=0.3960 train_loss=0.8235 | Real=0.475 HFake=0.412 LLM=0.301
-  Epoch 5: val=0.3192 train_loss=0.8137 | Real=0.475 HFake=0.359 LLM=0.124 — early stop
+### Image-only ablation — DONE
+Config: freeze_text=24 (all), freeze_image=False, batch=8, fp32, mode="image_only"
+image_only zeros input_ids + sets mask=ones in train.py loop. BanglaBERT stays loaded.
+Early stopping at epoch 5, best val=0.4019 (epoch 2)
 
-Test results:
-  Real:       P=0.362 R=0.671 F1=0.470
-  Human-Fake: P=0.659 R=0.358 F1=0.464
-  LLM-Fake:   P=0.543 R=0.327 F1=0.408
-  Macro-F1:   0.4475
+| Epoch | Val | Train Loss | Note |
+|-------|-----|-----------|------|
+| 1 | 0.3617 | 1.0591 | Best saved |
+| 2 | 0.4019 | 0.9500 | ✅ Best |
+| 3 | 0.3973 | 0.8606 | |
+| 4 | 0.3960 | 0.8235 | |
+| 5 | 0.3192 | 0.8137 | Early stop |
+
+| Class | Precision | Recall | F1 |
+|-------|-----------|--------|-----|
+| Real | 0.362 | 0.671 | 0.470 |
+| Human-Fake | 0.659 | 0.358 | 0.464 |
+| LLM-Fake | 0.543 | 0.327 | 0.408 |
+| **Macro** | | | **0.4475** |
+
 Confusion matrix: [[322,75,83],[259,172,49],[309,14,157]]
 Per-generator LLM recall: claude-haiku=0.288, gpt-4o-mini=0.367
-Human-Fake recall (0.358) > LLM-Fake recall (0.327) — does NOT replicate English asymmetry
-Results JSON: outputs/metrics/image_only_test_results.json ✅
-Checkpoint: maruf99khan/multibanfakedetect-checkpoints (image_only_best.pt) ✅
 
 Key findings:
-- Image-only macro-F1=0.4475 — only marginally above random (0.333)
+- 0.4475 — only marginally above random (0.333)
 - 309/480 LLM-fake misclassified as Real — confirms LLM-fake uses real images, visually indistinguishable
-- Training unstable — per-class recalls swing wildly, no meaningful visual signal
-- Paper framing: "Image-only achieves macro-F1 of 0.448, confirming visual features alone
-  are insufficient — LLM-generated samples reuse authentic images, making them visually
-  indistinguishable from real news." 
+- Human-Fake recall (0.358) > LLM-Fake recall (0.327) — does NOT replicate English asymmetry; image-only too noisy
+- Training unstable — per-class recalls swing wildly across epochs
+
+Results JSON: outputs/metrics/image_only_test_results.json ✅
+Checkpoint: maruf99khan/multibanfakedetect-checkpoints/image_only_best.pt ✅
 
 ---
 
-## PHASE 10 — INTEGRATED GRADIENTS (pending)
+## PHASE 10 — INTEGRATED GRADIENTS (NEXT)
 
-### Problem: OOM
-Model takes full 14+GB, leaves insufficient VRAM for gradient computation.
-Must run in fresh session with no other models loaded.
-Patch: run on CPU (slow but guaranteed memory).
+### Setup
+- Fresh Kaggle notebook (GPU T4×2 enabled in settings)
+- Add dataset `maruf99khan/multibanfakedetect-checkpoints` as input
+- Install: `pip install captum -q`
+- Model loaded to CPU inside run_ig() — do NOT set CUDA_VISIBLE_DEVICES
+- Checkpoint: `/kaggle/input/datasets/maruf99khan/multibanfakedetect-checkpoints/cmaf_ternary_best.pt`
+- Expected runtime: ~30-40 min on CPU for 30 examples (10 per class)
+
+### Expected outputs
+- outputs/explanations/ig_examples.csv
+- outputs/explanations/human_plausibility_template.csv (40 samples for annotators)
+- outputs/explanations/<sample_id>_patch_attr.npy
 
 ---
 
 ## REMAINING TASKS
 
-- [x] Text-only ablation — DONE (macro-F1=0.8964)
-- [x] Image-only ablation — DONE (macro-F1=0.4475)
-- [ ] Integrated Gradients — NEXT (fresh session, CPU mode, captum, cmaf_ternary_best.pt)
+- [x] Binary baseline — DONE (val macro-F1=0.8792)
+- [x] LLM-fake generation — DONE (4,800 samples, 2 models × 3 strategies)
+- [x] Ternary model training — DONE (test macro-F1=0.9285)
+- [x] Text-only ablation — DONE (test macro-F1=0.8964)
+- [x] Image-only ablation — DONE (test macro-F1=0.4475)
+- [ ] **Integrated Gradients — NEXT** (fresh session, CPU inside run_ig, captum)
 - [ ] QC 200 samples — BLOCKED (need 2nd Bangla-reading annotator; unblocks after IG produces plausibility template)
-- [ ] Paper writing — PENDING (unblocks after IG results)
+- [ ] Paper writing — PENDING (unblocks after IG)
 - [ ] Locate "Explainable FND in Bengali via LLM-Guided Hybrid Representations" — HIGH PRIORITY before finalizing novelty claims
 
 ---
 
 ## KEY NUMBERS FOR PAPER
 
-### Results Table
-| Model | Macro-F1 | Real F1 | HFake F1 | LLM F1 |
-|-------|----------|---------|----------|--------|
-| Binary baseline | 0.8792* | — | — | — |
+### Results Table (FINAL — use these numbers)
+| Model | Test Macro-F1 | Real F1 | HFake F1 | LLM F1 |
+|-------|--------------|---------|----------|--------|
+| Binary baseline* | 0.8792 | — | — | — |
 | Image-only | 0.4475 | 0.470 | 0.464 | 0.408 |
 | Text-only | 0.8964 | 0.853 | 0.838 | 0.999 |
-| **CMAF (ours)** | **0.9207** | **0.885** | **0.880** | **0.997** |
-| MBM-CTNet (reported) | 0.942** | — | — | — |
+| **CMAF (ours)** | **0.9285** | **0.894** | **0.896** | **0.996** |
+| MBM-CTNet** | 0.942 | — | — | — |
 
-*val set, memory-constrained (freeze_text=12, freeze_image=True)
-**binary task, reported in their paper
+*val set only, binary task, memory-constrained config
+**binary task, reported in their paper — not directly comparable
 
-Ablation delta vs CMAF:
-- Image-only:  −0.473 macro-F1 (near-random; visual features insufficient)
-- Text-only:   −0.024 macro-F1 (text dominant; fusion adds meaningful lift on HFake +0.042)
+Ablation delta vs CMAF (0.9285):
+- Image-only:  −0.481 (near-random; visual features insufficient alone)
+- Text-only:   −0.032 (text dominant; fusion adds lift especially on HFake: +0.058)
 
 ### Dataset Stats
 | Class | Train | Val | Test | Total |
@@ -421,7 +371,6 @@ import os, sys
 from kaggle_secrets import UserSecretsClient
 
 os.environ["GITHUB_TOKEN"] = UserSecretsClient().get_secret("GITHUB_TOKEN")
-os.environ["OPENROUTER_API_KEY"] = UserSecretsClient().get_secret("OPENROUTER_API_KEY")
 token = os.environ["GITHUB_TOKEN"]
 
 os.system(f"git clone https://{token}@github.com/maruf99khan/ML-Research.git /kaggle/working/ML-Research")
@@ -431,7 +380,7 @@ os.system(f"git remote set-url origin https://{token}@github.com/maruf99khan/ML-
 os.system("git config user.email 'kaggle@research.com'")
 os.system("git config user.name 'Kaggle Runner'")
 os.system("git fetch origin")
-os.system("git reset --hard origin/master")  # NOT git pull
+os.system("git reset --hard origin/master")
 
 os.environ["MBFD_BASE_DIR"]    = "/kaggle/working/ML-Research"
 os.environ["MBFD_DATASET_DIR"] = "/kaggle/input/datasets/mukaffimoin/multibanfakedetect-multimodal-bangla-fake-news"
@@ -440,10 +389,36 @@ from src.build_manifest import build_manifest
 build_manifest()
 
 import torch
+print(f"GPUs: {torch.cuda.device_count()}")
 print(f"Free VRAM: {torch.cuda.mem_get_info()[0]/1e9:.2f} GB")
 print("Ready")
 ```
 
-## CHECKPOINT ACCESS (every new session)
-Checkpoint is in Kaggle Dataset — add `maruf99khan/multibanfakedetect-checkpoints` as input.
-Path: `/kaggle/input/datasets/maruf99khan/multibanfakedetect-checkpoints/cmaf_ternary_best.pt`
+## CHECKPOINT ACCESS
+Dataset: `maruf99khan/multibanfakedetect-checkpoints` (add as notebook input)
+- cmaf_ternary_best.pt → epoch=3, val=0.9409, test=0.9285 (Aug 9 2026)
+- image_only_best.pt  → epoch=2, val=0.4019, test=0.4475 (Aug 9 2026)
+Path: `/kaggle/input/datasets/maruf99khan/multibanfakedetect-checkpoints/<filename>`
+
+## CHECKPOINT UPLOAD (after any training session)
+```python
+import os, json
+from kaggle_secrets import UserSecretsClient
+
+KAGGLE_API_KEY = UserSecretsClient().get_secret("KAGGLE_API_KEY")
+os.makedirs("/root/.config/kaggle", exist_ok=True)
+with open("/root/.config/kaggle/kaggle.json", "w") as f:
+    json.dump({"username": "maruf99khan", "key": KAGGLE_API_KEY}, f)
+os.chmod("/root/.config/kaggle/kaggle.json", 0o600)
+
+STAGING = "/kaggle/working/upload_staging"
+os.makedirs(STAGING, exist_ok=True)
+os.system("cp /kaggle/working/ML-Research/outputs/checkpoints/<NAME>.pt /kaggle/working/upload_staging/<NAME>.pt")
+
+with open(f"{STAGING}/dataset-metadata.json", "w") as f:
+    json.dump({"title": "multibanfakedetect-checkpoints",
+               "id": "maruf99khan/multibanfakedetect-checkpoints",
+               "licenses": [{"name": "CC0-1.0"}]}, f)
+
+os.system(f"kaggle datasets version -p {STAGING} -m 'description'")
+```

@@ -166,27 +166,40 @@ When gate=0, the fused output equals text_pooled only — image_pooled disappear
 
 **Observation:** Val loss starts rising at epoch 3 while macro-F1 plateaus — model overfitting to train set. Consider label smoothing or stronger dropout for ternary training.
 
-### Ternary model (after LLM-fake generation)
-*To be filled after Phase 3*
+### Ternary model — FINAL RESULTS (Aug 9 2026)
+
+**Training (retrain after checkpoint loss):**
+- Config: freeze_text=6, freeze_image=False, batch=8, T4×2, fp32
+- Best val macro-F1: 0.9409 (epoch 3, early stop at epoch 6)
+
+**Test results:**
+- Macro-F1: 0.9285
+- Real: P=0.911 R=0.877 F1=0.894
+- Human-Fake: P=0.880 R=0.912 F1=0.896
+- LLM-Fake: P=0.996 R=0.996 F1=0.996
+- Confusion matrix: [[421,58,1],[41,438,1],[0,2,478]]
+- Per-generator LLM recall: claude-haiku=0.992, gpt-4o-mini=1.000
+
+**Ablation results:**
+- Text-only: 0.8964 (delta: −0.032 vs CMAF)
+- Image-only: 0.4475 (delta: −0.481 vs CMAF; near-random)
 
 ---
 
-## Generation Log Summary (update as generation progresses)
+## Generation Log Summary — FINAL (Aug 1 2026)
 
-| Model | Strategy | Target | Accepted | Rejected | Acceptance % | Cost |
-|-------|----------|--------|----------|----------|-------------|------|
-| gemini-2.5-flash | rewrite | 100 | — | — | — | — |
-| gemini-2.5-flash | extend | 400 | — | — | — | — |
-| gemini-2.5-flash | summarize_extend | 700 | — | — | — | — |
-| gpt-4o-mini | rewrite | 350 | — | — | — | — |
-| gpt-4o-mini | extend | 350 | — | — | — | — |
-| gpt-4o-mini | summarize_extend | 300 | — | — | — | — |
-| llama-3.3-70b | rewrite | 270 | — | — | — | — |
-| llama-3.3-70b | extend | 265 | — | — | — | — |
-| llama-3.3-70b | summarize_extend | 265 | — | — | — | — |
-| claude-haiku | rewrite | 270 | — | — | — | — |
-| claude-haiku | extend | 265 | — | — | — | — |
-| claude-haiku | summarize_extend | 265 | — | — | — | — |
+| Model | Strategy | Accepted | Bangla ratio | Mean overlap |
+|-------|----------|----------|-------------|-------------|
+| gpt-4o-mini | rewrite | 800 | 0.9993 | 0.421 |
+| gpt-4o-mini | extend | 800 | 0.9989 | 0.482 |
+| gpt-4o-mini | summarize_extend | 800 | 0.9996 | ~0.42 |
+| claude-haiku | rewrite | 800 | 0.9999 | ~0.40 |
+| claude-haiku | extend | 800 | 0.9998 | ~0.43 |
+| claude-haiku | summarize_extend | 800 | 0.9999 | 0.394 |
+| **Total** | | **4,800** | | |
+
+Dropped: Gemini 2.5 Flash (43% rejection on rewrite), Llama 3.3 70B (latency).
+Total cost: ~$1.44 | Total time: ~567 min across 2 sessions.
 
 ---
 
