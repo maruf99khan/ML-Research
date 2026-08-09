@@ -305,15 +305,53 @@ Added `skip_image=False` parameter to `MultiBanFakeDetectModel.__init__`.
 When `skip_image=True`: ViT not loaded, `_image_tokens()` returns zeros.
 Paper statement: "For text-only ablation, image encoder excluded to isolate text encoder performance."
 
-### Text-only ablation status (Aug 6 2026 — IN PROGRESS)
-Config: skip_image=True, freeze_text=6, batch=8, fp32
+### Text-only ablation — DONE (Aug 9 2026)
+Config: skip_image=True, freeze_text=6, freeze_image=False, batch=8, fp32
 Trainable: 234,905,859 / 343,779,587 (ViT excluded)
-Epoch 3: val macro-F1 = 0.8916 (Real=0.846, HFake=0.830, LLM=0.998)
-Training running...
 
-### Image-only ablation
-Status: PENDING (next session)
-Note: image_only doesn't need skip_image — just zeros text tokens in forward pass
+Test results:
+  Real:       P=0.817 R=0.892 F1=0.853
+  Human-Fake: P=0.879 R=0.800 F1=0.838
+  LLM-Fake:   P=1.000 R=0.998 F1=0.999
+  Macro-F1:   0.8964
+Confusion matrix: [[428,52,0],[96,384,0],[0,1,479]]
+Results JSON: outputs/metrics/text_only_test_results.json ✅
+
+Key findings:
+- LLM-Fake nearly perfect from text alone — linguistic fingerprint is dominant signal
+- HFake F1 drops 0.042 vs full CMAF — image modality helps distinguish real from human-fake
+- 96 Human-Fake samples misclassified as Real — hard cases need visual context
+
+### Image-only ablation — DONE (Aug 9 2026)
+Config: freeze_text=24 (all layers), freeze_image=False, batch=8, fp32, mode="image_only"
+Note: image_only zeros input_ids + sets mask=ones inside train.py loop. BanglaBERT stays loaded.
+Training: early stopping at epoch 5, best val macro-F1=0.4019 (epoch 2)
+
+Training history:
+  Epoch 1: val=0.3617 train_loss=1.0591 | Real=0.205 HFake=0.387 LLM=0.493
+  Epoch 2: val=0.4019 train_loss=0.9500 | Real=0.452 HFake=0.418 LLM=0.336 ← best
+  Epoch 3: val=0.3973 train_loss=0.8606 | Real=0.439 HFake=0.377 LLM=0.375
+  Epoch 4: val=0.3960 train_loss=0.8235 | Real=0.475 HFake=0.412 LLM=0.301
+  Epoch 5: val=0.3192 train_loss=0.8137 | Real=0.475 HFake=0.359 LLM=0.124 — early stop
+
+Test results:
+  Real:       P=0.362 R=0.671 F1=0.470
+  Human-Fake: P=0.659 R=0.358 F1=0.464
+  LLM-Fake:   P=0.543 R=0.327 F1=0.408
+  Macro-F1:   0.4475
+Confusion matrix: [[322,75,83],[259,172,49],[309,14,157]]
+Per-generator LLM recall: claude-haiku=0.288, gpt-4o-mini=0.367
+Human-Fake recall (0.358) > LLM-Fake recall (0.327) — does NOT replicate English asymmetry
+Results JSON: outputs/metrics/image_only_test_results.json ✅
+Checkpoint: maruf99khan/multibanfakedetect-checkpoints (image_only_best.pt) ✅
+
+Key findings:
+- Image-only macro-F1=0.4475 — only marginally above random (0.333)
+- 309/480 LLM-fake misclassified as Real — confirms LLM-fake uses real images, visually indistinguishable
+- Training unstable — per-class recalls swing wildly, no meaningful visual signal
+- Paper framing: "Image-only achieves macro-F1 of 0.448, confirming visual features alone
+  are insufficient — LLM-generated samples reuse authentic images, making them visually
+  indistinguishable from real news." 
 
 ---
 
@@ -328,12 +366,12 @@ Patch: run on CPU (slow but guaranteed memory).
 
 ## REMAINING TASKS
 
-- [ ] Text-only ablation: finish training, evaluate, push results
-- [ ] Image-only ablation: next session
-- [ ] Integrated Gradients: fresh session, CPU mode
-- [ ] QC 200 samples: need 2nd Bangla-reading annotator (BLOCKER)
-- [ ] Paper writing: after all results
-- [ ] Find "Explainable FND in Bengali via LLM-Guided Hybrid Representations" paper
+- [x] Text-only ablation — DONE (macro-F1=0.8964)
+- [x] Image-only ablation — DONE (macro-F1=0.4475)
+- [ ] Integrated Gradients — NEXT (fresh session, CPU mode, captum, cmaf_ternary_best.pt)
+- [ ] QC 200 samples — BLOCKED (need 2nd Bangla-reading annotator; unblocks after IG produces plausibility template)
+- [ ] Paper writing — PENDING (unblocks after IG results)
+- [ ] Locate "Explainable FND in Bengali via LLM-Guided Hybrid Representations" — HIGH PRIORITY before finalizing novelty claims
 
 ---
 
@@ -343,13 +381,17 @@ Patch: run on CPU (slow but guaranteed memory).
 | Model | Macro-F1 | Real F1 | HFake F1 | LLM F1 |
 |-------|----------|---------|----------|--------|
 | Binary baseline | 0.8792* | — | — | — |
-| Text-only | TBD | TBD | TBD | TBD |
-| Image-only | TBD | TBD | TBD | TBD |
+| Image-only | 0.4475 | 0.470 | 0.464 | 0.408 |
+| Text-only | 0.8964 | 0.853 | 0.838 | 0.999 |
 | **CMAF (ours)** | **0.9207** | **0.885** | **0.880** | **0.997** |
 | MBM-CTNet (reported) | 0.942** | — | — | — |
 
 *val set, memory-constrained (freeze_text=12, freeze_image=True)
 **binary task, reported in their paper
+
+Ablation delta vs CMAF:
+- Image-only:  −0.473 macro-F1 (near-random; visual features insufficient)
+- Text-only:   −0.024 macro-F1 (text dominant; fusion adds meaningful lift on HFake +0.042)
 
 ### Dataset Stats
 | Class | Train | Val | Test | Total |

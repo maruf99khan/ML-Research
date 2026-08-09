@@ -180,24 +180,45 @@
 
 ### Why image_only uses skip_image=False?
 **Reason:** image_only zeros text tokens in forward pass but keeps BanglaBERT loaded. BanglaBERT alone fits in 14GB. No need to remove it.
+**Config:** freeze_text=24 (ALL layers — must not update BERT on zero input), freeze_image=False, batch=8, mode="image_only".
+
+**RESULT (confirmed Aug 9 2026):** image-only test macro-F1 = 0.4475
+- Real F1: 0.470 | Human-Fake F1: 0.464 | LLM-Fake F1: 0.408
+- Best val macro-F1: 0.4019 (epoch 2), early stopping at epoch 5
+- Confusion matrix: [[322,75,83],[259,172,49],[309,14,157]]
+- Per-generator LLM recall: claude-haiku=0.288, gpt-4o-mini=0.367
+- 309/480 LLM-fake misclassified as Real — confirms real images are visually indistinguishable
+- Human-Fake recall (0.358) > LLM-Fake recall (0.327) — does NOT replicate English asymmetry; image-only too noisy
+- Training unstable — per-class recalls swing across epochs, no meaningful visual signal
+- Paper framing: "Image-only achieves macro-F1 of 0.448, confirming visual features alone are
+  insufficient — LLM-generated samples reuse authentic images, making them visually indistinguishable
+  from real news." 
 
 ---
 
-## 11. NOVELTY CLAIMS (validated July 2026)
+## 11. NOVELTY CLAIMS (re-validated Aug 9 2026)
 
 ### Claim 1: First ternary Real/Human-Fake/LLM-Fake for Bangla
 **Status:** HOLDS with correct scoping
-**Verified against:** Med-MMHL (2023), MM-Health (2025), "When Machines Lie Differently" (2026) — all English or medical domain, not Bangla general news
-**Correct framing:** "First ternary classification in Bangla and in the general-news multimodal setting"
+**Verified against:**
+- Med-MMHL (2023) — English, medical domain
+- MM-Health (2025) — English, medical domain
+- Chen & Shu (ICLR 2024) — English, ternary-adjacent
+- Sabri, Hettiarachchi & Ranasinghe (RANLP 2025, ACL Anthology 2025.ranlp-1.119) — English TEXT-ONLY ternary; must cite and differentiate on language (Bangla vs English) and modality (multimodal vs text-only)
+- BanClickThumb (arXiv 2607.17182, July 2026) — multimodal Bengali clickbait BINARY, not fake news
+- arXiv 2607.21967 "When Machines Lie Differently" — ID unverified Aug 2026; do NOT cite until confirmed
+**Correct framing:** "First ternary Real/Human-Fake/LLM-Fake classification in Bangla and in the general-news multimodal setting"
 
 ### Claim 2: First cross-modal-attention ternary Bangla FND
 **Status:** HOLDS
-**Verified against:** MBM-CTNet (2025) uses one-directional co-attention, binary+multitask. Our bidirectional CMAF for ternary is novel.
+**Verified against:** MBM-CTNet (2025) — one-directional co-attention, binary+multitask. MultiFusionFake — DenseNet+mBERT late fusion, binary. BanClickThumb — CNN+OCR, binary clickbait.
+Our bidirectional CMAF for ternary is novel across all three dimensions.
 
 ### Claim 3: First Integrated Gradients for multimodal Bangla FND
-**Status:** HOLDS narrowly
-**Verified against:** HEMT-Fake (2025) uses SHAP+LIME+attention for Hindi/Gujarati/Marathi/Telugu — not Bangla, not IG.
-**UNRESOLVED:** "Explainable FND in Bengali via LLM-Guided Hybrid Representations" — must locate before submission.
+**Status:** HOLDS narrowly — UNRESOLVED RISK
+**Verified against:** HEMT-Fake (Frontiers in AI, Dec 2025) — South Asian multimodal (Hindi/Gujarati/Marathi/Telugu), SHAP+LIME+attention, NOT IG, NOT Bangla.
+**Correct framing:** "First use of Integrated Gradients for multimodal Bangla FND" — NOT "South Asian" (HEMT-Fake falsifies that scope).
+**⚠️ UNRESOLVED:** "Explainable Fake News Detection in Bengali via LLM-Guided Hybrid Representations" — referenced on ResearchGate, full paper not found as of Aug 2026. If multimodal + IG, directly conflicts. MUST locate before submission. Do NOT finalize explainability claim until found or ruled out.
 
 ---
 
