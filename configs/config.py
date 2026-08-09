@@ -56,7 +56,7 @@ MAX_TEXT_LEN      = 256
 # TRAINING — LOCKED
 # ============================================================
 SEED                    = 42
-BATCH_SIZE              = 8      # T4x2 — verify with memory test first
+BATCH_SIZE              = 8      # T4x2
 EVAL_BATCH_SIZE         = 16
 GRAD_ACCUM_STEPS        = 4      # effective batch = 32
 NUM_EPOCHS              = 15     # early stopping handles it
@@ -69,15 +69,16 @@ NUM_WORKERS             = 2
 
 # Memory settings — confirmed on Kaggle T4x2
 FREEZE_TEXT_LAYERS = 6      # freeze first 6 of 24 BERT layers
-FREEZE_IMAGE       = False  # fine-tune ViT — critical for image-text mismatch
+FREEZE_IMAGE       = False  # fine-tune ViT
 
-# Fallback if T4x2 OOMs with above settings
+# Fallback if OOM
 FALLBACK_FREEZE_TEXT_LAYERS = 12
 FALLBACK_FREEZE_IMAGE       = True
 FALLBACK_BATCH_SIZE         = 4
 
 # ============================================================
-# GENERATION — LOCKED (2 models x 3 strategies = 3,000 samples)
+# GENERATION — COMPLETE (2 models x 3 strategies x 800 = 4,800 samples)
+# Generation is done. These values are kept for paper reproducibility.
 # ============================================================
 OPENROUTER_API_KEY_ENV = "OPENROUTER_API_KEY"
 OPENROUTER_BASE_URL    = "https://openrouter.ai/api/v1"
@@ -86,30 +87,30 @@ OPENROUTER_BASE_URL    = "https://openrouter.ai/api/v1"
 GENERATOR_MODELS = {
     "gpt-4o-mini": {
         "model_id":     "openai/gpt-4o-mini",
-        "target_count": 1920,   # 640 x 3 strategies
+        "target_count": 2400,   # 800 x 3 strategies
     },
     "claude-haiku": {
         "model_id":     "anthropic/claude-3-haiku",
-        "target_count": 1080,   # 360 x 3 strategies
+        "target_count": 2400,   # 800 x 3 strategies
     },
 }
 
-# Per-strategy targets
+# Per-strategy targets (actual final counts)
 STRATEGY_TARGETS = {
     "gpt-4o-mini": {
-        "rewrite":          640,
-        "extend":           640,
-        "summarize_extend": 640,
+        "rewrite":          800,
+        "extend":           800,
+        "summarize_extend": 800,
     },
     "claude-haiku": {
-        "rewrite":          360,
-        "extend":           360,
-        "summarize_extend": 360,
+        "rewrite":          800,
+        "extend":           800,
+        "summarize_extend": 800,
     },
 }
 
 GENERATION_STRATEGIES  = ["rewrite", "extend", "summarize_extend"]
-TOTAL_LLM_FAKE_TARGET  = 3000   # 3,000 not 3,840 — class weighting handles imbalance
+TOTAL_LLM_FAKE_TARGET  = 4800   # 4,800 total — perfectly balanced with Real and Human-Fake
 GENERATION_BATCH_SIZE  = 150    # samples per API batch
 GENERATION_MAX_FAIL    = 3      # consecutive failures before skipping combo
 

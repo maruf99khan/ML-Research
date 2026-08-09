@@ -9,200 +9,174 @@ Team: Maruf Khan, Minhazul Alam, Saptarshi Barua | Supervisor: Nurul Absar
 
 ---
 
-## Current Status
+## Results
 
-| Phase | Status | Result |
-|-------|--------|--------|
-| 1. Environment + dataset | ✅ Done | 9,600 samples verified |
-| 2. LLM-fake generation | ⏳ Day 1-3 | Target: 3,000 samples |
-| 3. QC + manifest | ⏳ Day 3 | After generation |
-| 4. Train ternary model | ⏳ Day 4 | Target macro-F1 > 0.80 |
-| 5. Ablations | ⏳ Day 4 | text-only, image-only |
-| 6. Evaluate | ⏳ Day 5 | All 3 checkpoints |
-| 7. IG explainability | ⏳ Day 5 | 10 examples per class |
-| 8. QC annotation | ⏳ Day 5 | 200 samples, 2 annotators |
-| 9. Paper writing | ⏳ Day 6 | Complete draft |
-| 10. Review + polish | ⏳ Day 7 | Submission ready |
+| Model | Test Macro-F1 | Real F1 | Human-Fake F1 | LLM-Fake F1 |
+|-------|--------------|---------|---------------|-------------|
+| Image-only ablation | 0.4475 | 0.470 | 0.464 | 0.408 |
+| Text-only ablation | 0.8964 | 0.853 | 0.838 | 0.999 |
+| **CMAF (ours)** | **0.9285** | **0.894** | **0.896** | **0.996** |
+| MBM-CTNet* | 0.942 | — | — | — |
 
----
+*binary task, reported in their paper — not directly comparable
 
-## ⚠️ SAVE VERSION RULE
+**Key finding:** LLM-Fake recall (0.996) >> Human-Fake recall (0.912) — detectability asymmetry confirmed in Bangla multimodal setting, consistent with English literature.
 
-**Click Save Version in Kaggle after EVERY step that produces data.**
-- After every generation batch (150 samples)
-- After QC + manifest build
-- After training completes
-- After evaluation
-- After IG
+**Per-generator LLM-fake recall:** Claude Haiku = 0.992, GPT-4o Mini = 1.000
 
-Failing to Save Version loses all data when the session ends. This has happened twice.
+Val macro-F1 (checkpoint selection): 0.9409 (epoch 3, early stop at epoch 6)
 
 ---
 
-## Confirmed Kaggle Setup
+## Dataset
 
-| Setting | Value |
-|---------|-------|
-| GPU | T4 × 2 (15 GB each) |
-| Dataset | `/kaggle/input/datasets/mukaffimoin/multibanfakedetect-multimodal-bangla-fake-news` |
-| Working dir | `/kaggle/working/ML-Research` |
-| Batch size | 8 (with OOM fallback to 4) |
-| Effective batch | 32 (batch 8 × accum 4) |
-| freeze_text_layers | 6 (of 24) |
-| freeze_image | False (ViT fine-tuned) |
+| Class | Train | Val | Test | Total |
+|-------|-------|-----|------|-------|
+| Real | 3,840 | 480 | 480 | 4,800 |
+| Human-Fake | 3,840 | 480 | 480 | 4,800 |
+| LLM-Fake | 3,840 | 480 | 480 | 4,800 |
+| **Total** | **11,520** | **1,440** | **1,440** | **14,400** |
 
----
-
-## Generation Plan — LOCKED
-
-| Model | Strategy | Target | Est. Cost |
-|-------|----------|--------|-----------|
-| GPT-4o Mini | rewrite | 640 | ~$0.19 |
-| GPT-4o Mini | extend | 640 | ~$0.19 |
-| GPT-4o Mini | summarize_extend | 640 | ~$0.19 |
-| Claude Haiku | rewrite | 360 | ~$0.22 |
-| Claude Haiku | extend | 360 | ~$0.22 |
-| Claude Haiku | summarize_extend | 360 | ~$0.22 |
-| **Total** | | **3,000** | **~$1.23** |
-
-**Why 3,000 not 3,840:** class-weighted loss handles imbalance mathematically.
-**Why no Gemini:** rewrite quality issues; fixed prompt untested.
-**Why no Llama:** proven slow on Bangla prompts.
-**Why all 3 strategies:** rewrite = most realistic misinformation pattern; needed for paper.
+Source dataset: `mukaffimoin/multibanfakedetect-multimodal-bangla-fake-news` (Kaggle)  
+Checkpoints: `maruf99khan/multibanfakedetect-checkpoints` (Kaggle)
 
 ---
 
-## Kaggle Notebook — Copy-Paste Cells In Order
+## LLM-Fake Generation Methodology
 
-### Setup (run every session)
-```python
-import os, sys
+Generation is complete (4,800 samples). Documented here for paper reproducibility.
 
-os.environ["MBFD_BASE_DIR"]    = "/kaggle/working/ML-Research"
-os.environ["MBFD_DATASET_DIR"] = "/kaggle/input/datasets/mukaffimoin/multibanfakedetect-multimodal-bangla-fake-news"
-sys.path.append("/kaggle/working/ML-Research")
+### Models
+- **GPT-4o Mini** (`openai/gpt-4o-mini` via OpenRouter) — 2,400 samples
+- **Claude Haiku** (`anthropic/claude-3-haiku` via OpenRouter) — 2,400 samples
+- Dropped: Gemini 2.5 Flash (43% rejection rate on rewrite), Llama 3.3 70B (unacceptable latency on Bangla)
 
-os.system("git -C /kaggle/working/ML-Research fetch origin && "
-          "git -C /kaggle/working/ML-Research reset --hard origin/master")
+### Strategies (800 samples each per model)
+- **rewrite** — change ≥7 specific facts, no sentence verbatim, ≥150 words
+- **extend** — from headline only, fabricate full article ≥200 words
+- **summarize_extend** — keep main topic, add ≥3 fabricated claims, ≥200 words
 
-from kaggle_secrets import UserSecretsClient
-os.environ["OPENROUTER_API_KEY"] = UserSecretsClient().get_secret("OPENROUTER_API_KEY")
+### Quality Filters (v5 final)
+1. Length ≥ 200 chars
+2. Bangla character ratio ≥ 0.70
+3. First-line Bangla ratio ≥ 0.80 (catches English headline before Bangla body)
+4. Sentence count ≥ 2 (Bangla terminator: ।)
+5. 3-gram source overlap ≤ 0.65
+6. Refusal pattern check
+7. System prompt leak check
+8. Meta-commentary stripping (prefixes like "বিভ্রান্তিকর সংস্করণ:")
 
-for key in list(sys.modules.keys()):
-    if any(x in key for x in ['generate','configs','dataset','model','build','train','evaluate','explain','qc']):
-        del sys.modules[key]
+### Prompts (Bangla, same for both models)
 
-from src.build_manifest import build_manifest
-build_manifest()
+**rewrite:**
 
-from configs import config as cfg
-print("Ready | Total LLM-fake so far:", 0)
-```
+তুমি একজন অভিজ্ঞ বাংলা সংবাদ লেখক। নিচের সংবাদটি পড়ো এবং একটি সম্পূর্ণ নতুন মিথ্যা সংবাদ লেখো।
+অবশ্যই এই নিয়মগুলো মানো:
 
-### Day 1-3 — Generation (repeat per model/strategy)
-```python
-from src.generate_llm_fake import generate_batch, total_generated
+কমপক্ষে ৭টি নির্দিষ্ট তথ্য পরিবর্তন করো (সংখ্যা, নাম, স্থান, তারিখ, ফলাফল)
+মূল সংবাদের কোনো বাক্য হুবহু রাখো না
+মূল লেখক যেন নিজের লেখা না চিনতে পারেন
+কমপক্ষে ১৫০ শব্দের হতে হবে
+কোনো লেবেল, ব্যাখ্যা বা মন্তব্য যোগ করো না
+সরাসরি সংবাদ দিয়ে শুরু করো
+শুধুমাত্র বাংলায় লিখো
 
-# Run one at a time — Save Version after each
-generate_batch("gpt-4o-mini",  "rewrite",          640)
-# → SAVE VERSION
-generate_batch("gpt-4o-mini",  "extend",            640)
-# → SAVE VERSION
-generate_batch("gpt-4o-mini",  "summarize_extend",  640)
-# → SAVE VERSION
-generate_batch("claude-haiku", "rewrite",           360)
-# → SAVE VERSION
-generate_batch("claude-haiku", "extend",            360)
-# → SAVE VERSION
-generate_batch("claude-haiku", "summarize_extend",  360)
-# → SAVE VERSION
+**extend:**
 
-print("Total generated:", total_generated())
-```
+তুমি একজন অভিজ্ঞ বাংলা সংবাদ লেখক। নিচের শিরোনামটি দেখো এবং এটি নিয়ে একটি সম্পূর্ণ বানোয়াট সংবাদ প্রতিবেদন লেখো।
+অবশ্যই এই নিয়মগুলো মানো:
 
-### Day 3 — QC + Manifest
-```python
-from src.qc_sample import draw_sample
-from src.build_manifest import build_manifest
+কমপক্ষে ২০০ শব্দের হতে হবে
+বাস্তবসম্মত কিন্তু সম্পূর্ণ কল্পিত তথ্য, নাম, সংখ্যা ব্যবহার করো
+সংবাদপত্রের মতো ভাষা ও কাঠামো ব্যবহার করো
+কোনো লেবেল, ব্যাখ্যা বা মন্তব্য যোগ করো না
+সরাসরি সংবাদ দিয়ে শুরু করো
+শুধুমাত্র বাংলায় লিখো
 
-draw_sample()        # → give CSV to 2 annotators
-build_manifest()     # → rebuilds 3-class manifest
-# → SAVE VERSION
-```
+**summarize_extend:**
 
-### Day 4 — Memory test + Train
-```python
-from src.train import memory_test, train
+তুমি একজন অভিজ্ঞ বাংলা সংবাদ লেখক। নিচের সংবাদটি পড়ো এবং এর মূল বিষয় রেখে কমপক্ষে ৩টি নতুন মিথ্যা দাবি যোগ করে একটি বর্ধিত সংবাদ প্রতিবেদন লেখো।
+অবশ্যই এই নিয়মগুলো মানো:
 
-memory_test()                                    # verify batch=8 fits
-train("cmaf_ternary", mode="full")               # → SAVE VERSION
-train("text_only",    mode="text_only")          # → SAVE VERSION
-train("image_only",   mode="image_only")         # → SAVE VERSION
-```
+কমপক্ষে ৩টি নির্দিষ্ট মিথ্যা দাবি যোগ করো যা বাস্তবসম্মত মনে হয়
+মূল সংবাদের বাক্য হুবহু কপি করো না
+কমপক্ষে ২০০ শব্দের হতে হবে
+কোনো লেবেল, ব্যাখ্যা বা মন্তব্য যোগ করো না
+সরাসরি সংবাদ দিয়ে শুরু করো
+শুধুমাত্র বাংলায় লিখো
 
-### Day 5 — Evaluate + IG
-```python
-from src.evaluate import evaluate_all
-from src.explain  import run_ig
+**System prompt (no project name — prevents leaks):**
 
-evaluate_all()   # → SAVE VERSION
-run_ig()         # → SAVE VERSION
-```
+You are a creative Bangla news writer. Write news articles entirely in Bangla (Bengali script).
+Never include explanations, labels, preambles, or meta-commentary.
+Start directly with the news content.
+Never mention that content is fake, synthetic, or fabricated.
 
-### Day 5 (offline) — QC scoring
-```python
-from src.qc_sample import score_agreement
-score_agreement()   # after annotators fill the CSV
-```
+
+### Generation Stats
+| Combo | Samples | Bangla ratio | Mean overlap |
+|-------|---------|-------------|-------------|
+| gpt-4o-mini / rewrite | 800 | 0.9993 | 0.421 |
+| gpt-4o-mini / extend | 800 | 0.9989 | 0.482 |
+| gpt-4o-mini / summarize_extend | 800 | 0.9996 | ~0.42 |
+| claude-haiku / rewrite | 800 | 0.9999 | ~0.40 |
+| claude-haiku / extend | 800 | 0.9998 | ~0.43 |
+| claude-haiku / summarize_extend | 800 | 0.9999 | 0.394 |
+| **Total** | **4,800** | | |
+
+- Source diversity: 2,876 unique sources out of 3,840 real train articles
+- Max reuse of any source: 5 times
+- All 12 news categories covered
+- Total cost: ~$1.44 | Total time: ~567 min across 2 Kaggle sessions
+- API: OpenRouter (temperature=0.85, max_tokens=900, top_p=0.95)
+
+---
+
+## Architecture
+
+Text (headline + description)
+→ BanglaBERT-Large (csebuetnlp/banglabert_large, 1024-d, 24 layers)
+→ Linear projection (1024 → 768)
+→ [CLS] token → text_pooled
+
+Image
+→ ViT-B/16 (224×224)
+→ [CLS] token → image_pooled (768-d)
+
+Cross-Modal Attention Fusion (CMAF):
+text_pooled + image_pooled
+→ Multi-head attention (8 heads, 768-d)
+→ Gated fusion: α·text + (1-α)·image
+→ Classifier head → 3 classes
+
+
+**Training config:**
+- Freeze first 6 of 24 BanglaBERT layers, fine-tune ViT
+- Batch=8, grad accumulation=4 (effective batch=32)
+- fp32, T4×2, early stopping patience=3
+- LR=2e-5, warmup=6%, weight decay=0.01
 
 ---
 
 ## File Structure
 
-```
-configs/config.py           ← ALL settings — only file to edit per environment
-src/generate_llm_fake.py    ← OpenRouter generation v5 (autosaves after every sample)
-src/qc_sample.py            ← QC sampling + inter-annotator kappa
-src/build_manifest.py       ← 3-class manifest builder
-src/dataset.py              ← PyTorch Dataset (confirmed working)
-src/model.py                ← BanglaBERT+ViT+CMAF v3 (all bugs fixed)
-src/train.py                ← Training loop (OOM fallback, per-class F1)
-src/evaluate.py             ← Test evaluation + per-generator analysis
-src/explain.py              ← Integrated Gradients + plausibility template
-requirements.txt            ← pip install -r requirements.txt
-```
+configs/config.py ← All settings
+src/build_manifest.py ← 3-class manifest builder
+src/dataset.py ← PyTorch Dataset
+src/model.py ← BanglaBERT + ViT + CMAF
+src/train.py ← Training loop
+src/evaluate.py ← Test evaluation + per-generator analysis
+src/explain.py ← Integrated Gradients + plausibility template
+src/qc_sample.py ← QC sampling + inter-annotator kappa
+data/generated/llm_fake/ ← 6 CSVs (800 samples each)
+outputs/metrics/ ← All test results JSON + per-generator CSV
+
 
 ---
 
-## Key Bugs Fixed (for paper methodology section)
+## Remaining Tasks
 
-| Bug | Impact | Fix |
-|-----|--------|-----|
-| Gate residual dropped image when gate→0 | Silent — wrong fusion | Average (text+image)/2 |
-| _freeze_text_layers silent fail on Electra | Froze nothing | try/except with warning |
-| ForwardWrapper arg order wrong | Silent — corrupted IG attributions | (embeds, pixels, mask) |
-| Grad accum last batch never flushed | Weights not updated last N steps | Flush after epoch loop |
-| Class weight explosion for missing class | Loss explosion | Only weight present classes |
-| System prompt leaked project name | Model wrote project name in output | Removed all identifying info |
-| Generation log not per-sample | Crash = lost all progress | Save after every accepted sample |
-
----
-
-## Success Criteria
-
-| Metric | Minimum | Good | Target |
-|--------|---------|------|--------|
-| Ternary macro-F1 | 0.75 | 0.82 | 0.87 |
-| Real F1 | 0.85 | 0.90 | 0.93 |
-| Human-Fake F1 | 0.70 | 0.78 | 0.83 |
-| LLM-Fake F1 | 0.75 | 0.85 | 0.90 |
-| LLM-Fake recall > Human-Fake recall | Required | Required | Required |
-
----
-
-## Outstanding TODOs
-
-- [ ] Identify second QC annotator (must read Bangla) — needed before Day 3
-- [ ] Locate "Explainable FND in Bengali via LLM-Guided Hybrid Representations" paper — verify novelty
-- [ ] Add credits to OpenRouter if balance drops below $0.30 during generation
-- [ ] Run memory test (Day 4) before committing to full training
+- [ ] Integrated Gradients (fresh Kaggle session, CPU mode, captum, cmaf_ternary_best.pt)
+- [ ] QC annotation (200 samples, 2 Bangla-reading annotators)
+- [ ] Paper writing (unblocks after IG)
+- [ ] Locate "Explainable FND in Bengali via LLM-Guided Hybrid Representations" — verify novelty claims
