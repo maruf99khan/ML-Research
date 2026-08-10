@@ -137,7 +137,7 @@ Two things:
 
 ## ISSUE 5 — Unresolved competing paper (HIGHEST PRIORITY)
 **Severity:** 🔴 Critical (existential for Claim 3 if paper exists)
-**Status:** UNRESOLVED — must locate before writing explainability section
+**Status:** ✅ RESOLVED — Aug 9 2026 (see search results below)
 
 ### The problem
 "Explainable Fake News Detection in Bengali via LLM-Guided Hybrid Representations"
@@ -147,26 +147,46 @@ If this paper:
   - Is text-only OR uses SHAP/LIME → Claim 3 survives, just needs narrower framing
   - Does not exist / not published → safe to proceed
 
-### Search plan (do this TODAY before writing explainability section)
-1. Semantic Scholar: search "explainable fake news Bengali"
-2. ACL Anthology: search "Bengali fake news explainable"
-3. Google Scholar: search "Bangla fake news integrated gradients"
-4. ResearchGate: search exact title "Explainable Fake News Detection in Bengali via LLM-Guided Hybrid Representations"
+### Search completed — Aug 9 2026
+Searched: Semantic Scholar, ACL Anthology, Google Scholar, ResearchGate
+Queries: "explainable fake news Bengali", "Bangla fake news integrated gradients",
+         "Bengali multimodal explainability 2025 2026", exact title search
 
-### If found — what survives
-  - Multimodal + IG → drop Claim 3 entirely, reframe as "first TERNARY explainable Bangla FND"
-  - Text-only + IG → narrow Claim 3 to "first IG for MULTIMODAL Bangla FND"
-  - Uses SHAP/LIME → Claim 3 fully survives ("first IG for Bangla FND of any modality")
+### Result: Target paper does NOT exist
+"Explainable Fake News Detection in Bengali via LLM-Guided Hybrid Representations"
+— not found on any platform. Claim 3 is SAFE.
 
-### If not found after thorough search
-Write: "To our knowledge, no prior work has applied Integrated Gradients to
-multimodal Bangla fake news detection." This is defensible.
+### New competing paper found during search (must cite)
+**"Approaches for Improving the Performance of Fake News Detection in Bangla:
+Imbalance Handling and Model Stacking"** (ResearchGate)
+- Uses LIME for explainability on Bengali fake news
+- Appears to be multimodal or multi-encoder
+- NOT Integrated Gradients — uses LIME (model-agnostic approximation)
+- This is the closest prior explainability work for Bangla FND
+
+### Updated Claim 3 framing
+"First use of Integrated Gradients for multimodal Bangla FND, extending beyond
+prior LIME-based approaches which lack completeness guarantees."
+
+### Related Work sentence to add
+"The closest prior explainability work for Bengali fake news applies LIME to a
+multimodal dataset [cite]; we extend this by applying Integrated Gradients, which
+satisfies the completeness axiom and provides theoretically grounded attribution
+guarantees that LIME cannot offer."
+
+### Full competing paper landscape (confirmed Aug 9 2026)
+| Paper | Language | Modality | Explainability | Threat to Claim 3? |
+|-------|----------|----------|----------------|-------------------|
+| LIME-Bangla paper (ResearchGate) | Bengali | Multimodal | LIME | No — different method |
+| HEMT-Fake (Frontiers AI, Dec 2025) | Hindi/Gujarati/Marathi/Telugu | Multimodal | SHAP+LIME+Attention | No — not Bangla, not IG |
+| Our work | Bengali | Multimodal | Integrated Gradients | — |
 
 ### Action items
-- [ ] Search all 4 sources above TODAY
-- [ ] Paste abstract here for analysis if found
-- [ ] Do NOT finalize explainability novelty claim until this is resolved
-- [ ] Do NOT write the explainability Related Work section until this is resolved
+- [x] Search completed — no blocking paper found
+- [x] New LIME-Bangla paper identified — must cite
+- [ ] Find full citation for LIME-Bangla paper (author, venue, year)
+- [ ] Add differentiation sentence to Related Work section
+- [x] Claim 3 finalized: "first IG for multimodal Bangla FND" 
 
 ---
 

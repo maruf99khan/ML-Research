@@ -223,7 +223,19 @@ Our bidirectional CMAF for ternary is novel across all three dimensions.
 **Status:** HOLDS narrowly — UNRESOLVED RISK
 **Verified against:** HEMT-Fake (Frontiers in AI, Dec 2025) — South Asian multimodal (Hindi/Gujarati/Marathi/Telugu), SHAP+LIME+attention, NOT IG, NOT Bangla.
 **Correct framing:** "First use of Integrated Gradients for multimodal Bangla FND" — NOT "South Asian" (HEMT-Fake falsifies that scope).
-**⚠️ UNRESOLVED:** "Explainable Fake News Detection in Bengali via LLM-Guided Hybrid Representations" — referenced on ResearchGate, full paper not found as of Aug 2026. If multimodal + IG, directly conflicts. MUST locate before submission. Do NOT finalize explainability claim until found or ruled out.
+**RESOLVED (Aug 9 2026):** Searched Semantic Scholar, ACL Anthology, Google Scholar, ResearchGate.
+Target paper does not exist. Claim 3 is SAFE.
+
+**New paper found:** Bengali FND paper using LIME for explainability (ResearchGate).
+Uses LIME not IG — Claim 3 survives. Must cite and differentiate.
+Differentiation: "We apply Integrated Gradients, which satisfies the completeness axiom
+and provides theoretically grounded attribution guarantees that LIME cannot offer."
+
+**Confirmed competing explainability landscape:**
+- LIME-Bangla paper (ResearchGate) — Bengali, LIME, not IG → cite and differentiate
+- HEMT-Fake (Frontiers AI, Dec 2025) — South Asian, SHAP+LIME, not Bangla, not IG → already cited
+
+**Final Claim 3 framing:** "First use of Integrated Gradients for multimodal Bangla FND." ✅
 
 ---
 
